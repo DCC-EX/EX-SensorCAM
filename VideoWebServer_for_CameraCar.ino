@@ -51,10 +51,8 @@
 
 int ssidId = 0;
 int prev_ssidId = 0;
-char* ssid[]     = {"Medrock", "NWRR_WiFi"};   //input your wifi name
-char* password[] = {"arrisise", "NWR@6d22"};   //input your wifi passwords
-//char* ssid     = "NWRR_WiFi";   //input your wifi name
-//char* password = "NWR@6d22";   //input your wifi passwords
+char* ssid[]     = {"SSID1", "SSID2"};   //input your wifi name
+char* password[] = {"Passcode1", "Passcode1"};   //input your wifi passwords
 
 // 2023/06/06 Added SNMP Agent
 WiFiUDP udp;
