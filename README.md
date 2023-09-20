@@ -1,4 +1,8 @@
 # VideoWebServer_for_CameraCar
+## Introduction
+I installed a front view camera in a N-Guage train which can transmit the video image over WiFi. Newly released ESP32 S3 based module made it available in N-Guage train which has has a very limited space to install necessary hardware. 
+Users are able to view the front view video image from a running train by Web server which runs on the ESP32 S3 processor over WiFi. The system is powered by a 3.7V battery installed in the car. 
+In this prototype, the system was installed in a very common box car which is xxx mm length. The car does not have a motor to run. Thus, the car has to be connected in front of an engine. 
 
 ## Hardware
 ### Base Processor Module
@@ -19,6 +23,16 @@ https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?i
 ### Wiring
 
 ## Installation to a Box Car
+### Box Car for the installation
+
+### Install XIAO ESP32 S3 Sense
+
+### OV2640 Camera
+
+### WiFi Antenna
+The antenna is not embedded to the processor module. The antenna is installed externally via tiny coax cable. To get the better WiFi connectivity, the antenna was installed on top ot the box car.
+
+### External view
 
 ![20230618_Moodel_Train9](https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/2313e41b-c91b-4342-9147-577760250168)
 
