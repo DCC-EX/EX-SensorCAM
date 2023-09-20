@@ -22,7 +22,7 @@ Please refer the following tutrial page for the general usage of XIAO ESP32S3 Se
 OV2640 camera module with 120 mm wire is used raplacing the OV2640 camera module attached in XIAO ESP32 S3 Sense. It is to install a camera on the front of the box car and XIAO ESP32 S3 Sense module on the other side of car so that USB-C connector is exposed to the back side of the box car.
 
 The OV2640 module I used was obtained from form Amazon here.
-https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
+* https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
 
 ### Wiring
 The additioinal wirings made in the system were.
