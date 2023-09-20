@@ -4,6 +4,7 @@
 ### Base Processor Module
 Seeed Studio XIAO ESP32 S3 Sense is used for the base processor module The module has WiFi, OV2540 Camera Interface, Microphone, Battery input with battery charing circuit, USB-C interface and SD Card interface. OV2540 Camera module comes with the product, but was replaced with a longer cable one. SD card interface or Microphone is not used in the Camera Car use at this moment. 
 
+XIAO ESP32 S3 Sense can be obtained form Amazon.
 https://www.amazon.com/gp/product/B0C69FFVHH/ref=ppx_yo_dt_b_asin_title_o00_s00?ie=UTF8&psc=1
 
 Please refer the following URL for the general usage of XIAO ESP32S3 Sense Camera.
@@ -11,6 +12,9 @@ https://github.com/limengdu/SeeedStudio-XIAO-ESP32S3-Sense-camera
 
 ### Camera Module
 OV2640 camera module with 120 mm wire is used raplacing the OV2640 camera module attached in XIAO ESP32 S3 Sense. It is to install a camera on front of the box car and XIAO ESP32 S3 Sense　module on the other side of car.
+
+The OV2640 module I used was obtained from form Amazon here.
+https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
 
 ### Wiring
 
