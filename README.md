@@ -53,8 +53,7 @@ The antenna is not embedded to the processor module. The antenna is installed ex
 
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/862044c0-b980-42e9-ac90-13991024830d" width="640">
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/26b64cba-4164-4e61-a883-defcb8490ccc" width="640">
-
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/fe9dbde1-e343-4f5d-9b38-5c507936bcf2" width="640">
 
 ## Software
 1. First, please install necessary libraries and set-up Arduino IDE following the Software Preparation section of the following tutrial.
