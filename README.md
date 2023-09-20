@@ -63,11 +63,14 @@ The antenna is not embedded to the processor module. The antenna is installed ex
 
 
 ## Software
-(1) First, please install necessary libraries and set-up Arduino IDE following the Software Preparation section of the following tutrial.
+1. First, please install necessary libraries and set-up Arduino IDE following the Software Preparation section of the following tutrial.
 * https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/
 
-(2) Download sketch
-(3) Change WiFi SSID and Password
+2. Download sketch
+   Download the sketches from the repository here.
+   
+4. Change WiFi SSID and Password
+   Change WiFi SSID and Password to the ones in your network.
 
 ## Operation
 ### Basic Operation
