@@ -22,8 +22,8 @@ https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?i
 
 ### Wiring
 The additioinal wirings made in the system were.
-DC input from 3.7V battery
-An external LED connection. The LED works as a headlight of the car.
+* DC input from 3.7V battery
+* An external LED connection. The LED works as a headlight of the car.
 
 ### Battery
 A 3.7V Lithium-Ion battery is used to supply a power to the modules. As XIAO ESP32 S3 Sense hasa charging circuit to the Lithium-Ion battery, it is possible to charge it by USB power input.
