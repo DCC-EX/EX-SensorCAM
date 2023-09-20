@@ -18,7 +18,7 @@ https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?i
 
 ### Wiring
 
-### Installation to a Box Car
+## Installation to a Box Car
 
 ![20230618_Moodel_Train9](https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/2313e41b-c91b-4342-9147-577760250168)
 
