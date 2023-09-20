@@ -6,7 +6,7 @@ In this prototype, the system was installed in a very common box car which is xx
 
 ## Hardware
 ### Base Processor Module
-Seeed Studio XIAO ESP32 S3 Sense is used for the base processor module The module has WiFi, OV2540 Camera Interface, Microphone, Battery input with battery charing circuit, USB-C interface and micro SD Card interface. OV2540 Camera module comes with the product, but was replaced with a longer cable one. Micro SD card interface or Microphone is not used in the Camera Car use at this moment. 
+Seeed Studio XIAO ESP32 S3 Sense is used for the base processor module The module has WiFi, OV2540 Camera Interface, Microphone, Battery input with battery charing circuit, USB interface and micro SD Card interface. OV2540 Camera module comes with the product, but was replaced with a longer cable one. Micro SD card interface or Microphone is not used in the Camera Car use at this moment. 
 
 XIAO ESP32 S3 Sense can be obtained form Amazon.
 https://www.amazon.com/gp/product/B0C69FFVHH/ref=ppx_yo_dt_b_asin_title_o00_s00?ie=UTF8&psc=1
@@ -15,12 +15,23 @@ Please refer the following URL for the general usage of XIAO ESP32S3 Sense Camer
 https://github.com/limengdu/SeeedStudio-XIAO-ESP32S3-Sense-camera
 
 ### Camera Module
-OV2640 camera module with 120 mm wire is used raplacing the OV2640 camera module attached in XIAO ESP32 S3 Sense. It is to install a camera on front of the box car and XIAO ESP32 S3 Sense　module on the other side of car.
+OV2640 camera module with 120 mm wire is used raplacing the OV2640 camera module attached in XIAO ESP32 S3 Sense. It is to install a camera on the front of the box car and XIAO ESP32 S3 Sense module on the other side of car so that USB-C connector is exposed to the back side of the box car.
 
 The OV2640 module I used was obtained from form Amazon here.
 https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
 
 ### Wiring
+The additioinal wiring mades in the system were.
+DC input from 3.7V battery
+An external LED connection. The LED works as a headlight of the car.
+
+### Battery
+A 3.7V Lithium-Ion battery is used to supply a power to the modules. As XIAO ESP32 S3 Sense hasa charging circuit to the Lithium-Ion battery, it is possible to charge it by USB power input.
+A 350 mAh battery can operate the video transmission for about 15 min.
+
+### USB port
+USB port with USB-C connector faces to the rear wall of the box car. It is mainly to install a new sketch to the processor, but it can be used to input power to the processor as well as charge the 3.7V battery. 
+In future, I want to supply 5V DC power through the USB port from a track power.
 
 ## Installation to a Box Car
 ### Box Car for the installation
