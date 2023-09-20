@@ -11,7 +11,11 @@ Seeed Studio XIAO ESP32 S3 Sense is used for the base processor module The modul
 XIAO ESP32 S3 Sense can be obtained form Amazon.
 https://www.amazon.com/gp/product/B0C69FFVHH/ref=ppx_yo_dt_b_asin_title_o00_s00?ie=UTF8&psc=1
 
-Please refer the following URL for the general usage of XIAO ESP32S3 Sense Camera.
+Product introduction by the maker is seen here.
+https://www.seeedstudio.com/XIAO-ESP32S3-Sense-p-5639.html
+
+Please refer the following tutrial page for the general usage of XIAO ESP32S3 Sense Camera.
+https://www.seeedstudio.com/XIAO-ESP32S3-Sense-p-5639.html
 https://github.com/limengdu/SeeedStudio-XIAO-ESP32S3-Sense-camera
 
 ### Camera Module
@@ -62,7 +66,8 @@ The antenna is not embedded to the processor module. The antenna is installed ex
 
 ## Operation
 ### Basic Operation
-The operation is easy. Just access to http://<IP address> via Web Brower and click "Tuen On Video" on the bottom of the menu.
+The Web Server access uses the video streaming feature by SpeedStudio which is introduced in the tutorial page of XIAO ESP32S3 Sense Camera shown in Base Processor Module section.
+The operation is easy. Just access to http://<IP address> via an Web Brower and click "Tuen On Video" on the bottom of the menu.
 The camera configuration is available through the bottuns and windows in the menue. They are same as the original example VideoWebServer application by SpeedStudio.
 One modification is to add Head Light button on top. It turns on/off the head light LED.
 
