@@ -79,6 +79,9 @@ The operation is easy. Just access to http://<IP address> via an Web Brower and 
 The camera configuration is available through the bottuns and windows in the menue. They are same as the original example VideoWebServer application by SpeedStudio.
 One modification is to add Head Light button on top. It turns on/off the head light LED.
 
+<img width="589" alt="20230920_Model_Train1" src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/da16e990-76c9-441a-be3c-2d047deadf7b">
+
+
 ### SNMP MIB
 The system supports SNMP agent and has following MIB onjects.
 The default access password is public for SNMP GET and private for SNMP SET. They are mainly for a trouble shooting in case the video streaming does not come smoothly by checking WiFi signal strength and video frame rate.
