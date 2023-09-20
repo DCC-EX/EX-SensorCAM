@@ -60,3 +60,17 @@ The antenna is not embedded to the processor module. The antenna is installed ex
 
 ## Software
 
+## Operation
+### Basic Operation
+The operation is easy. Just access to http://<IP address> via Web Brower and click "Tuen On Video" on the bottom of the menu.
+The camera configuration is available through the bottuns and windows in the menue. They are same as the original example VideoWebServer application by SpeedStudio.
+One modification is to add Head Light button on top. It turns on/off the head light LED.
+
+### SNMP MIB
+The system supports SNMP agent and has following MIB onjects.
+The default access password is public for SNMP GET and private for SNMP SET. They are mainly for a trouble shooting in case the video streaming does not come smoothly by checking WiFi signal strength and video frame rate.
+
+### Serial Console Output
+There is serial console output for debugging purpose. If the system is faling to connect WiFi, the serial console output reports the status of WiFi connection.
+
+
