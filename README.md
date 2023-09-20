@@ -50,12 +50,15 @@ The antenna is not embedded to the processor module. The antenna is installed ex
 ### External view
 
 Front View
+
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/314a999d-b404-46b6-92d5-5c1bea4c2ba9" width="640">
 
 Read View
+
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/fe9dbde1-e343-4f5d-9b38-5c507936bcf2" width="640">
 
 Side View
+
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/862044c0-b980-42e9-ac90-13991024830d" width="640">
 
 
