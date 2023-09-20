@@ -21,7 +21,7 @@ The OV2640 module I used was obtained from form Amazon here.
 https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
 
 ### Wiring
-The additioinal wiring mades in the system were.
+The additioinal wirings made in the system were.
 DC input from 3.7V battery
 An external LED connection. The LED works as a headlight of the car.
 
