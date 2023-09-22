@@ -1,4 +1,4 @@
-// VideoWebServer_for_CameraCar_v006.ino
+// VideoWebServer_for_CameraCar_v007.ino
 //  
 // Video Cam Car HTTP Server version
 // 2023/05/07 Kazuhiko Tomomatsu
@@ -34,6 +34,10 @@
 // Changed Video Quality Default from 12 to 38.
 // Add VIdeo Quality reporting in the atetus report via serial every 10 sec.
 // VideoWebServer_for_CameraCar2_v006.ino
+//
+// 2023/09/22 Kazuhiko Tomomatsu
+// Add ssid automatic switch routine
+// VideoWebServer_for_CameraCar2_v007.ino
 
 #include "esp_camera.h"
 #include <WiFi.h>
@@ -51,8 +55,10 @@
 
 int ssidId = 0;
 int prev_ssidId = 0;
-char* ssid[]     = {"SSID1", "SSID2"};   //input your wifi name
-char* password[] = {"Passcode1", "Passcode1"};   //input your wifi passwords
+char* ssid[]     = {"ssid1", "ssid2"};   //input your wifi name
+char* password[] = {"password1", "password2"};   //input your wifi passwords
+//char* ssid     = "NWRR_WiFi";   //input your wifi name
+//char* password = "NWR@6d22";   //input your wifi passwords
 
 // 2023/06/06 Added SNMP Agent
 WiFiUDP udp;
@@ -81,7 +87,6 @@ ValueCallback* HeadLightStatusOID;
 ValueCallback* sysUpTimeOID;
 ValueCallback* sysDescrOID;
 ValueCallback* sysContactOID;
-//TimestampCallback* timestampCallbackOID;
 TimestampCallback* sysUptimeOID;
 
 
@@ -118,7 +123,7 @@ void setup() {
 
   Serial.begin(115200);
   Serial.setDebugOutput(true);
-  Serial.println("VideoWebServer_for_CameraCar_v006.ino");
+  Serial.println("VideoWebServer_for_CameraCar_v007.ino");
   Serial.println("2023/06/12 Kazuhiko Tomomatsu");
 // 2023/06/05 Added ESP chip information detection and display
   Serial.printf("This chip has %d cores\n", ESP.getChipCores());
@@ -131,19 +136,35 @@ void setup() {
   Serial.println();
 // End of 2023/06/05 Added ESP chip information detection and display
 
+  delay(1000);
 
-  WiFi.begin(ssid[ssidId], password[ssidId]);
-  Serial.println("");
-  Serial.print("WiFi connecting to ");
-  Serial.println(ssid[ssidId]);
-
+  // 2023/09/22 Add ssid automatic switchroutine
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(WiFi.status());
+    WiFi.begin(ssid[ssidId], password[ssidId]);
+    Serial.println("");
+    Serial.print("WiFi connecting to ");
+    Serial.println(ssid[ssidId]);
+
+    int i = 0;
+    while ((WiFi.status() != WL_CONNECTED) & (i<50)) {
+      delay(500);
+      Serial.print(WiFi.status());
+      i++;
+    }
+    if(i<50){
+      Serial.println("");
+      Serial.print("WiFi connected to ");
+      Serial.println(ssid[ssidId]);
+    }
+    else{
+      Serial.println("");
+      Serial.print("WiFi connecttion to ");
+      Serial.print(ssid[ssidId]);
+      Serial.println(" failed");
+      ssidId = 1 - ssidId;
+    }
   }
-  Serial.println("");
-  Serial.print("WiFi connected to ");
-  Serial.println(ssid[ssidId]);
+// 2023/09/22 End of Add ssid automatic switchroutine
 
 // 2023/05/07 Added WiFi signal strength reporting
   Serial.print("Signal Strength (RSSI): ");
@@ -183,25 +204,7 @@ void setup() {
     snprintf(sysLocation, 25, "Warrenville IL, USA");
     snmp.addReadWriteStringHandler(".1.3.6.1.2.1.1.6.0", &sysLocation, 25, true);
 
-    // Setup SNMP TRAP
-    // The SNMP Trap spec requires an uptime counter to be sent along with the trap.
-    settableNumberTrap->setUDP(&udp); // give a pointer to our UDP object
-    settableNumberTrap->setTrapOID(new OIDType(".1.3.6.1.2.1.33.2")); // OID of the trap
-    settableNumberTrap->setSpecificTrap(1); 
-
-    // Set the uptime counter to use in the trap (required)
-    settableNumberTrap->setUptimeCallback(sysUptimeOID);
-
-    // Set some previously set OID Callbacks to send these values with the trap (optional)
-//    settableNumberTrap->addOIDPointer(changingNumberOID);
-//    settableNumberTrap->addOIDPointer(settableNumberOID);
-
-    settableNumberTrap->setIP(WiFi.localIP()); // Set our Source IP
-
-    // Ensure to sortHandlers after adding/removing and OID callbacks - this makes snmpwalk work
-    snmp.sortHandlers();
 // End of 2023/06/06 Added SNMP Agent
-
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -267,30 +270,7 @@ void setup() {
 
 void loop() {
 // 2023/06/06 Added SNMP Agent
-  snmp.loop(); // must be called as often as possible
- /**
-  if(settableNumberOID->setOccurred){    
-    Serial.printf("Number has been set to value: %i\n", settableNumber);
-    if(settableNumber%2 == 0){
-      // Sending an SNMPv2 INFORM (trap will be kept and re-sent until it is acknowledged by the IP address it was sent to)
-      settableNumberTrap->setVersion(SNMP_VERSION_2C);
-      settableNumberTrap->setInform(true); // set this to false and send using `settableNumberTrap->sendTo` to send it without the INFORM request
-    } else {
-      // Sending regular SNMPv1 trap
-      settableNumberTrap->setVersion(SNMP_VERSION_1);
-      settableNumberTrap->setInform(false);
-    }
-    settableNumberOID->resetSetOccurred();
-    // Send the trap to the specified IP address
-    // If INFORM is set, snmp.loop(); needs to be called in order for the acknowledge mechanism to work.
-    IPAddress destinationIP = IPAddress(192, 168, 1, 243);
-    if(snmp.sendTrapTo(settableNumberTrap, destinationIP, true, 2, 5000) != INVALID_SNMP_REQUEST_ID){ 
-      Serial.println("Sent SNMP Trap");
-    } else {
-      Serial.println("Couldn't send SNMP Trap");
-    }
-  }
- **/
+  snmp.loop(); // must be called as often as possible 
   tensOfMillisCounter = millis()/10;
 // End of 2023/06/06 Added SNMP Agent
   diff_tensOfMillisCounter = tensOfMillisCounter - prev_tensOfMillisCounter;
@@ -307,7 +287,6 @@ void loop() {
   digitalWrite(HeadLightPin, HeadLight);
 
   // 2023/06/12 Add ssid change routine
-  // Serial.printf("ssidId = %d, prev_ssidId = %d\n", ssidId, prev_ssidId);
   if(ssidId!=prev_ssidId) {
     if(ssidId<2){
       Serial.print("Switching Wifi to ");
@@ -344,3 +323,4 @@ void loop() {
 
   delay(100); // This 100 ms delay is requried for snmp.loop() not to take more CPU.
 }
+
