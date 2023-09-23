@@ -51,6 +51,7 @@ The flat calbes is connected to camera module connector of the XIAO ESPS3 Sense.
 
 ### WiFi Antenna
 The antenna is not embedded to the processor module. The antenna is installed externally via tiny coax cable. To get the better WiFi connectivity, the antenna was installed on top ot the box car.
+I don't recommend to connect and disconnect the cable, place and peel off the sheet antenna many times. The WiFi connection will not be stable enough.
 
 ### Install XIAO ESP32 S3 Sense
 After the necessqry wired were conencted, XIAO ESP32 Sense module placed at the rear side of the box car. The box car is not enough wide to put the module inside. 
