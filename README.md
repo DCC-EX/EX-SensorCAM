@@ -94,6 +94,7 @@ One modification is to add Head Light button on top. It turns on/off the head li
 <img width="589" alt="20230920_Model_Train1" src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/da16e990-76c9-441a-be3c-2d047deadf7b">
 
 Captured Video Image (Click the video thumbnail below)
+The layout itself is still under building.
 
 [![Video on WebServer_for_CameraCar](http://img.youtube.com/vi/2yf1QeSd02I/0.jpg)](https://www.youtube.com/watch?v=2yf1QeSd02I)
 
