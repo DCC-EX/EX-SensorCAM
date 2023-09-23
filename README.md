@@ -28,13 +28,6 @@ The OV2640 module I used was obtained from form Amazon here.
 A 3.7V Lithium-Ion battery is used to supply a power to the modules. As XIAO ESP32 S3 Sense hasa charging circuit to the Lithium-Ion battery, it is possible to charge it by USB power input.
 A 350 mAh battery can operate the video transmission for about 15 min.
 
-### Wiring
-The additioinal wirings made in the system were.
-* DC input from 3.7V battery. Wires from battery case soldered to BAT+ and BAT- terinal.
-* An external LED connection. Connected to D1 and GND. The LED works as a headlight of the car.
-
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1a57552a-cf30-4f62-b478-99aca77f1405" width="640">
-
 ### USB port
 USB port with USB-C connector faces to the rear wall of the box car. It is mainly to install a new sketch to the processor, but it can be used to input power to the processor as well as charge the 3.7V battery. 
 In future, I want to supply 5V DC power through the USB port from a track power.
@@ -42,14 +35,25 @@ In future, I want to supply 5V DC power through the USB port from a track power.
 ## Installation to a Box Car
 ### Box Car for the installation
 
+### Wiring
+The additioinal wirings made in the system were.
+* DC input from 3.7V battery. Wires from battery case soldered to BAT+ and BAT- terinal.
+* An external LED connection. Connected to D1 and GND. The LED works as a headlight of the car.
 
-### Install XIAO ESP32 S3 Sense
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1c16ae6b-a12f-43a2-8eb3-b04fdd8ac742" width="640">
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1a57552a-cf30-4f62-b478-99aca77f1405" width="640">
 
 ### OV2640 Camera
+Camera itself is installed on the front panel of the box car. The flat cables goes to inside of the box car via an open hole. 
+The flat calbes is connected to camera module connector of the XIAO ESPS3 Sense.
 
 ### WiFi Antenna
 The antenna is not embedded to the processor module. The antenna is installed externally via tiny coax cable. To get the better WiFi connectivity, the antenna was installed on top ot the box car.
+
+### Install XIAO ESP32 S3 Sense
+After the necessqry wired were conencted, XIAO ESP32 Sense module placed at the rear side of the box car. The box car is not enough wide to put the module inside. 
+
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1c16ae6b-a12f-43a2-8eb3-b04fdd8ac742" width="640">
+
 
 ### External view
 
