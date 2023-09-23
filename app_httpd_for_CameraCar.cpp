@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 // 2023/05/07 Kazuhiko Tomomatsiu
-// Applied to VideoWebServer_Kaz
+// Applied to VideoWebServer_for_CameraCar
 // Worked without any change from original app_httpd.cpp
 // 
 // 2023/06/12 Kazuhiko Tomomatsu
