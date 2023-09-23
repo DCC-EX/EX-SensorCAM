@@ -26,8 +26,8 @@ The OV2640 module I used was obtained from form Amazon here.
 
 ### Wiring
 The additioinal wirings made in the system were.
-* DC input from 3.7V battery
-* An external LED connection. The LED works as a headlight of the car.
+* DC input from 3.7V battery. Wires from battery case soldered to BAT+ and BAT- terinal.
+* An external LED connection. Connected to D1 and GND. The LED works as a headlight of the car. 
 
 ### Battery
 A 3.7V Lithium-Ion battery is used to supply a power to the modules. As XIAO ESP32 S3 Sense hasa charging circuit to the Lithium-Ion battery, it is possible to charge it by USB power input.
