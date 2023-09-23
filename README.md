@@ -81,6 +81,8 @@ Read View
    
 4. Change WiFi SSID and Password
    Change WiFi SSID and Password to the ones in your network.
+   Two sets of SSID and Password can be configured. They are for the case the camera car is used on own layout or a layout in other place such as model train club.
+   The softare switches the SSID automatically from one to another if the connectios is not establishsed in 50 tries.
 
 ## Operation
 ### Basic Operation
@@ -96,16 +98,20 @@ One modification is to add Head Light button on top. It turns on/off the head li
 ### SNMP MIB
 The system supports SNMP agent and has following MIB onjects.
 The default access password is public for SNMP GET and private for SNMP SET. They are mainly for a trouble shooting in case the video streaming does not come smoothly by checking WiFi signal strength and video frame rate.
+OID = .1.3.6.1.4.1.4998.3.1.1, ReadWrire, It reports SSID ID which is in use.
+OID = .1.3.6.1.4.1.4998.3.1.2, ReadOnly, It reports SSID Name which is in use. 
+OID = .1.3.6.1.4.1.4998.3.1.3, ReadOnly, It reports WiFi signal stlength. 
+OID = .1.3.6.1.4.1.4998.3.1.4, ReadOnly, It reports video frame rate in 1000th of the rate. 10000 representes 10 frames per sec.
+OID = .1.3.6.1.4.1.4998.3.1.5, ReadWrire, It reports the status of head light LED, true (on) or false (off).
 
 Eaxmple output.
 ~ % snmpwalk -c public -v 2c 192.168.1.38 1.3.6.1.4.1.4998.3.1
 SNMPv2-SMI::enterprises.4998.3.1.1 = INTEGER: 0
-SNMPv2-SMI::enterprises.4998.3.1.2 = STRING: "SSID1"
+SNMPv2-SMI::enterprises.4998.3.1.2 = STRING: "ssid1"
 SNMPv2-SMI::enterprises.4998.3.1.3 = INTEGER: -55
 SNMPv2-SMI::enterprises.4998.3.1.4 = INTEGER: 10416
 SNMPv2-SMI::enterprises.4998.3.1.5 = INTEGER: 0
 SNMPv2-SMI::enterprises.4998.3.1.5 = No more variables left in this MIB View (It is past the end of the MIB tree)
-
 
 ### Serial Console Output
 There is serial console output for debugging purpose. If the system is faling to connect WiFi, the serial console output reports the status of WiFi connection.
