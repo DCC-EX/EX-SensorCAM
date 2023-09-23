@@ -33,6 +33,8 @@ The additioinal wirings made in the system were.
 A 3.7V Lithium-Ion battery is used to supply a power to the modules. As XIAO ESP32 S3 Sense hasa charging circuit to the Lithium-Ion battery, it is possible to charge it by USB power input.
 A 350 mAh battery can operate the video transmission for about 15 min.
 
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1a57552a-cf30-4f62-b478-99aca77f1405" width="640">
+
 ### USB port
 USB port with USB-C connector faces to the rear wall of the box car. It is mainly to install a new sketch to the processor, but it can be used to input power to the processor as well as charge the 3.7V battery. 
 In future, I want to supply 5V DC power through the USB port from a track power.
