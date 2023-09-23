@@ -64,7 +64,7 @@ After the necessqry wired were conencted, XIAO ESP32 Sense module placed at the 
 Side View
 To cover the cut on the side of box car, I made a panel which was made from a beer can, and put it on the side of box car body.
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/862044c0-b980-42e9-ac90-13991024830d" width="640">
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/ea20210a-1556-4009-b24e-23f3d437de88" width="640">
 
 Front View
 
