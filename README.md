@@ -24,14 +24,14 @@ OV2640 camera module with 120 mm wire is used raplacing the OV2640 camera module
 The OV2640 module I used was obtained from form Amazon here.
 * https://www.amazon.com/gp/product/B08XLWLGG6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
 
-### Wiring
-The additioinal wirings made in the system were.
-* DC input from 3.7V battery. Wires from battery case soldered to BAT+ and BAT- terinal.
-* An external LED connection. Connected to D1 and GND. The LED works as a headlight of the car. 
-
 ### Battery
 A 3.7V Lithium-Ion battery is used to supply a power to the modules. As XIAO ESP32 S3 Sense hasa charging circuit to the Lithium-Ion battery, it is possible to charge it by USB power input.
 A 350 mAh battery can operate the video transmission for about 15 min.
+
+### Wiring
+The additioinal wirings made in the system were.
+* DC input from 3.7V battery. Wires from battery case soldered to BAT+ and BAT- terinal.
+* An external LED connection. Connected to D1 and GND. The LED works as a headlight of the car.
 
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1a57552a-cf30-4f62-b478-99aca77f1405" width="640">
 
