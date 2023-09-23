@@ -99,7 +99,7 @@ The operation is easy. Just access to http://<IP address> via an Web Brower and 
 The camera configuration is available through the bottuns and windows in the menue. They are same as the original example VideoWebServer application by SpeedStudio.
 One modification is to add Head Light button on top. It turns on/off the head light LED.
 
-<img width="589" alt="20230920_Model_Train1" src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/da16e990-76c9-441a-be3c-2d047deadf7b">
+<img width="589" alt="20230920_Model_Train1" src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/fae3b555-38bc-41e5-9519-db3fe6aa2927">
 
 Captured Video Image (Click the video thumbnail below)
 
