@@ -56,7 +56,7 @@ I don't recommend to connect and disconnect the cable, place and peel off the sh
 ### Install XIAO ESP32 S3 Sense
 After the necessqry wired were conencted, XIAO ESP32 Sense module placed at the rear side of the box car. The box car is not enough wide to put the module inside. 
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1c16ae6b-a12f-43a2-8eb3-b04fdd8ac742" width="640">
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1cdcb9f6-6c28-4157-b5a7-3e492f90ddd1" width="640">
 
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/cd68beb5-a480-4a34-a9d6-671703eff4a2" width="640">
 
