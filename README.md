@@ -68,7 +68,7 @@ To cover the cut on the side of box car, I made a panel which was made from a be
 
 Front View
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/314a999d-b404-46b6-92d5-5c1bea4c2ba9" width="640">
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/91616201-11c6-492a-839f-f078b38e25c7" width="640">
 
 Read View
 
