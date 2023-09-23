@@ -36,7 +36,7 @@ In future, I want to supply 5V DC power through the USB port from a track power.
 ### Box Car for the installation
 The system was installed in a box car with 98mm length x 19mm wide x 31mm height (including wheels) which is commonly sold.
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/3e2e2176-a74a-49ce-851e-d10133da78b1" width="480">
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/43e6fed7-295a-48c7-b18c-608b4e93ded8" width="480">
 
 ### Wiring
 The additioinal wirings made in the system were.
