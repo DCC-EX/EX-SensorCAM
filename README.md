@@ -94,6 +94,7 @@ One modification is to add Head Light button on top. It turns on/off the head li
 <img width="589" alt="20230920_Model_Train1" src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/da16e990-76c9-441a-be3c-2d047deadf7b">
 
 Captured Video Image (Click the video thumbnail below)
+
 The layout itself is still under building.
 
 [![Video on WebServer_for_CameraCar](http://img.youtube.com/vi/2yf1QeSd02I/0.jpg)](https://www.youtube.com/watch?v=2yf1QeSd02I)
@@ -102,19 +103,32 @@ The layout itself is still under building.
 The system supports SNMP agent and has following MIB onjects.
 The default access password is public for SNMP GET and private for SNMP SET. They are mainly for a trouble shooting in case the video streaming does not come smoothly by checking WiFi signal strength and video frame rate.
 OID = .1.3.6.1.4.1.4998.3.1.1, ReadWrire, It reports SSID ID which is in use.
+
 OID = .1.3.6.1.4.1.4998.3.1.2, ReadOnly, It reports SSID Name which is in use. 
+
 OID = .1.3.6.1.4.1.4998.3.1.3, ReadOnly, It reports WiFi signal stlength. 
+
 OID = .1.3.6.1.4.1.4998.3.1.4, ReadOnly, It reports video frame rate in 1000th of the rate. 10000 representes 10 frames per sec.
+
 OID = .1.3.6.1.4.1.4998.3.1.5, ReadWrire, It reports the status of head light LED, true (on) or false (off).
 
+
 Eaxmple output.
+
 ~ % snmpwalk -c public -v 2c 192.168.1.38 1.3.6.1.4.1.4998.3.1
+
 SNMPv2-SMI::enterprises.4998.3.1.1 = INTEGER: 0
+
 SNMPv2-SMI::enterprises.4998.3.1.2 = STRING: "ssid1"
+
 SNMPv2-SMI::enterprises.4998.3.1.3 = INTEGER: -55
+
 SNMPv2-SMI::enterprises.4998.3.1.4 = INTEGER: 10416
+
 SNMPv2-SMI::enterprises.4998.3.1.5 = INTEGER: 0
+
 SNMPv2-SMI::enterprises.4998.3.1.5 = No more variables left in this MIB View (It is past the end of the MIB tree)
+
 
 ### Serial Console Output
 There is serial console output for debugging purpose. If the system is faling to connect WiFi, the serial console output reports the status of WiFi connection.
