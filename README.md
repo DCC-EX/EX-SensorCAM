@@ -57,6 +57,10 @@ After the necessqry wired were conencted, XIAO ESP32 Sense module placed at the 
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/cd68beb5-a480-4a34-a9d6-671703eff4a2" width="640">
 
 ### External view
+Side View
+To cover the cut on the side of box car, I made a panel which was made from a beer can, and put it on the side of box car body.
+
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/862044c0-b980-42e9-ac90-13991024830d" width="640">
 
 Front View
 
@@ -66,9 +70,6 @@ Read View
 
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/fe9dbde1-e343-4f5d-9b38-5c507936bcf2" width="640">
 
-Side View
-
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/862044c0-b980-42e9-ac90-13991024830d" width="640">
 
 
 ## Software
