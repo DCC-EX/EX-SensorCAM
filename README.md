@@ -43,7 +43,7 @@ The additioinal wirings made in the system were.
 * DC input from 3.7V battery. Wires from battery case soldered to BAT+ and BAT- terinal.
 * An external LED connection. Connected to D1 and GND. The LED works as a headlight of the car.
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1a57552a-cf30-4f62-b478-99aca77f1405" width="640">
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/a707a0a1-afe6-49d2-8045-bddec181d753" width="640">
 
 ### OV2640 Camera
 Camera itself is installed on the front panel of the box car. The flat cables goes to inside of the box car via an open hole. 
