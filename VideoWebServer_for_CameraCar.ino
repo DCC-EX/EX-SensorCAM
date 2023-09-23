@@ -57,8 +57,6 @@ int ssidId = 0;
 int prev_ssidId = 0;
 char* ssid[]     = {"ssid1", "ssid2"};   //input your wifi name
 char* password[] = {"password1", "password2"};   //input your wifi passwords
-//char* ssid     = "NWRR_WiFi";   //input your wifi name
-//char* password = "NWR@6d22";   //input your wifi passwords
 
 // 2023/06/06 Added SNMP Agent
 WiFiUDP udp;
@@ -195,10 +193,10 @@ void setup() {
     sysDescrOID = snmp.addReadOnlyStaticStringHandler(".1.3.6.1.2.1.1.1.0", sysDescr);    
     sysUpTimeOID = (TimestampCallback*)snmp.addTimestampHandler(".1.3.6.1.2.1.1.3.0", &tensOfMillisCounter);
     sysContact = (char*)malloc(25 * sizeof(char));
-    snprintf(sysContact, 25, "ktomoma@mac.com");
+    snprintf(sysContact, 25, "your_e-mail_address");
     sysContactOID = snmp.addReadWriteStringHandler(".1.3.6.1.2.1.1.4.0", &sysContact, 25, true);
     sysName = (char*)malloc(25 * sizeof(char));
-    snprintf(sysName, 25, "XIAO ESP32S3 Sense");
+    snprintf(sysName, 25, "XIAO ESP32 S3 Sense");
     snmp.addReadWriteStringHandler(".1.3.6.1.2.1.1.5.0", &sysName, 25, true);
     sysLocation = (char*)malloc(25 * sizeof(char));
     snprintf(sysLocation, 25, "Warrenville IL, USA");
