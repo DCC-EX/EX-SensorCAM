@@ -40,7 +40,9 @@ In future, I want to supply 5V DC power through the USB port from a track power.
 ## Installation to a Box Car
 ### Box Car for the installation
 
+
 ### Install XIAO ESP32 S3 Sense
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1c16ae6b-a12f-43a2-8eb3-b04fdd8ac742" width="640">
 
 ### OV2640 Camera
 
