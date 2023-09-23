@@ -72,7 +72,7 @@ Front View
 
 Read View
 
-<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/fe9dbde1-e343-4f5d-9b38-5c507936bcf2" width="640">
+<img src="hhttps://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/153cfbc2-171b-4357-819b-eef7bef053fa" width="640">
 
 
 
