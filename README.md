@@ -89,6 +89,8 @@ Read View
    Two sets of SSID and Password can be configured. They are for the case the camera car is used on own layout or a layout in other place such as model train club.
    The softare switches the SSID automatically from one to another if the connectios is not establishsed in 50 tries.
 
+   If only one SSID configuration is enough, please use same SSID name and passowrd for both.
+
 ## Operation
 ### Basic Operation
 The Web Server access uses the video streaming feature by SpeedStudio which is introduced in the tutorial page of XIAO ESP32S3 Sense Camera shown in Base Processor Module section.
