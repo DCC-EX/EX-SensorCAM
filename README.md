@@ -54,6 +54,7 @@ After the necessqry wired were conencted, XIAO ESP32 Sense module placed at the 
 
 <img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/1c16ae6b-a12f-43a2-8eb3-b04fdd8ac742" width="640">
 
+<img src="https://github.com/ktomoma/VideoWebServer_for_CameraCar/assets/131932595/cd68beb5-a480-4a34-a9d6-671703eff4a2" width="640">
 
 ### External view
 
