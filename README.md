@@ -83,7 +83,9 @@ Read View
    Download the sketches from the repository here.
    
 4. Change WiFi SSID and Password
+   
    Change WiFi SSID and Password to the ones in your network.
+   
    Two sets of SSID and Password can be configured. They are for the case the camera car is used on own layout or a layout in other place such as model train club.
    The softare switches the SSID automatically from one to another if the connectios is not establishsed in 50 tries.
 
