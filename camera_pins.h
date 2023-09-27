@@ -155,7 +155,8 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-#define LED_GPIO_NUM      33
+// 4 for flash led or 33 for normal led
+#define LED_GPIO_NUM       4
 
 #elif defined(CAMERA_MODEL_TTGO_T_JOURNAL)
 #define PWDN_GPIO_NUM      0
@@ -194,8 +195,6 @@
 #define VSYNC_GPIO_NUM    38
 #define HREF_GPIO_NUM     47
 #define PCLK_GPIO_NUM     13
-
-#define LED_GPIO_NUM      21
 
 #elif defined(CAMERA_MODEL_ESP32_CAM_BOARD)
 // The 18 pin header on the board has Y5 and Y3 swapped
