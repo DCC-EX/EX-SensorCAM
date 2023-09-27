@@ -39,20 +39,20 @@ The configuration file for ESP32-CAM based sensorCAM
 //
 // Your SSID may not contain ``"'' (double quote, ASCII 0x22).
 //#define WIFI_SSID "Your network name"
-#define WIFISSID    "Your network name"
+#define WIFI_SSID    "Your network name"
 //
 // WIFI_PASSWORD is the network password for your home network or if
 // you want to change the password from default AP mode password
 // to the AP password you want. 
 // Your password may not contain ``"'' (double quote, ASCII 0x22).
-//#define WIFI_PASSWORD "Your network passwd"
-#define WIFIPWD "Your network passwd"
+//#define WIFI_PWD "Your network passwd"
+#define WIFI_PWD "Your network passwd"
 //
 // For ALTERNATIVE WiFi network set up SSID and password if required
-//#define ALTSSID     "Your Alt.net name"
-//#define ALTWIFIPWD  "Your Alt.netPassword"
-#define ALTSSID     "Optus_7CAD47"
-#define ALTWIFIPWD  "stagsyentaXPPjX"
+//#define ALTWIFI_SSID     "Your Alt.net name"
+//#define ALTWIFI_PWD  "Your Alt.netPassword"
+#define ALTWIFI_SSID     "Optus_7CAD47"
+#define ALTWIFI_PWD  "stagsyentaXPPjX"
 //
 // To invoke TWOIMAGE Averaging feature on more/less virtual Sensors, adjust this parameter
 // this average may reduce sensitivity to noise BUT may increase response time by 100mSec to minimal level changes 
