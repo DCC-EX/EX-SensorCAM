@@ -28,8 +28,13 @@ The webserver WiFi images are not a substitute for the Processing 4 utility, as 
 Specific SensorCAM files are provided for each of the above apps.
 
 ## Documentation
-The sensorCAM is a complex device needing some in depth understanding to achieve its full potential.
-A 30 page manual is provided to assist with this process.
+The sensorCAM is a complex device needing some in depth understanding to achieve its full potential. A 30 page manual is provided to assist with this process. 
+
+If you want clarification or wish to discuss the implementation please contact me at bcdaniel2@optusnet.com.au and I will attempt to address your issues. 
+
+
+
+
 
 
 
