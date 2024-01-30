@@ -32,6 +32,20 @@ The sensorCAM is a complex device needing some in depth understanding to achieve
 
 If you want clarification or wish to discuss the implementation please contact me at bcdaniel2@optusnet.com.au and I will attempt to address your issues.  I welcome your feedback. 
 
+## Outline of install process
+1.	Acquire ESP32-CAM and MB/FTDI
+2.	install Arduino IDE with the ESP32 libraries (includes a WiFi CAM example)
+3.	Load the CAM with the WiFi example and test.
+4.	Install the sensorCAM.ino software and configure.
+5.	Test the basic sensorCAM functions to confirm functional install
+6.	Load Processing 4 app. and sensorCAM.pde code
+7.	Use the Processing 4 app to replace the Arduino Monitor.  Familiarize and test
+8.	Create test sensors and test detection with moving targets
+9.	Setup the CAM viewing the model railroad and test a virtual sensor with moving rolling stock.
+10.	Optimise parameters for best performance.
+11.	Connect CAM to an i2c interface (e.g. PCA9515A or better)
+12.	Depending on system, integrate sensorCAM into Command Station using appropriate code.
+
 
 
 
