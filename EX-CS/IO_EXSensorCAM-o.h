@@ -1,7 +1,6 @@
-`/*  17/02/24 
+/*  1/10/23 
  *  © 2022, Peter Cole. All rights reserved.
  *  © 2023, Barry Daniel ESP32 revision 
- *  © 2024, Harald Barth. All rights reserved.
  *
  *  This file is part of EX-CommandStation
  *
@@ -21,16 +20,16 @@
 
 /*
 * The IO_EXSensorCAM.h device driver can integrate with the sensorCAM device and EX-IOExpander devices.
-* It is an extension on the IO_EXIOExpander.h device driver to include specific needs of the ESP32 sensorCAM 
+* It is a variation on the IO_EXIOExpander.h device driver to include specific needs of the ESP32 sensorCAM 
 * This device driver will configure the device on startup, along with
 * interacting with the device for all input/output duties.
 *
 * To create EX-SensorCAM devices, define them in myHal.cpp:
-* (Note the IOExpander device driver is included by default)
+* (Note the device driver is included by default)
 *
 * void halSetup() {
 *   // EXSensorCAM::create(vpin, num_vpins, i2c_address);
-*   EXSensorCAM::create(700, 80, 0x11);
+*   EXSensorCAM::create(700, 80, 0x11);  
 * }
 * 
 * All pins on an EX-IOExpander device are allocated according to the pin map for the specific
@@ -60,8 +59,9 @@
 /*
  * IODevice subclass for EX-SensorCAM.
  */
+
 class EXSensorCAM : public IODevice {
-public:
+public:  
   enum ProfileType : uint8_t {
     Instant = 0,  // Moves immediately between positions (if duration not specified)
     UseDuration = 0, // Use specified duration
@@ -108,55 +108,34 @@ private:
           _numAnaloguePins = receiveBuffer[2];
 
           // See if we already have suitable buffers assigned
-          if (_numDigitalPins>0) {
-            size_t digitalBytesNeeded = (_numDigitalPins + 7) / 8;
-            if (_digitalPinBytes < digitalBytesNeeded) {
-              // Not enough space, free any existing buffer and allocate a new one
-              if (_digitalPinBytes > 0) free(_digitalInputStates);
-              if ((_digitalInputStates = (byte*) calloc(digitalBytesNeeded, 1)) != NULL) {
-		_digitalPinBytes = digitalBytesNeeded;
-	      } else {
-		DIAG(F("EX-IOExpander I2C:%s ERROR alloc %d bytes"), _I2CAddress.toString(), digitalBytesNeeded);
-		_deviceState = DEVSTATE_FAILED;
-		_digitalPinBytes = 0;
-		return;
-	      }
-							
-            }
-																					 																													
+          size_t digitalBytesNeeded = (_numDigitalPins + 7) / 8;
+          if (_digitalPinBytes < digitalBytesNeeded) {
+            // Not enough space, free any existing buffer and allocate a new one
+            if (_digitalPinBytes > 0) free(_digitalInputStates);
+            _digitalInputStates = (byte*) calloc(_digitalPinBytes, 1);
+            _digitalPinBytes = digitalBytesNeeded;
           }
-          if (_numAnaloguePins>0) {
-            size_t analogueBytesNeeded = _numAnaloguePins * 2;
-            if (_analoguePinBytes < analogueBytesNeeded) {
-              // Free any existing buffers and allocate new ones.
-              if (_analoguePinBytes > 0) {
-                free(_analogueInputBuffer);
-                free(_analogueInputStates);
-                free(_analoguePinMap);
-              }
-              _analogueInputStates = (uint8_t*) calloc(analogueBytesNeeded, 1);
-              _analogueInputBuffer = (uint8_t*) calloc(analogueBytesNeeded, 1);
-              _analoguePinMap = (uint8_t*) calloc(_numAnaloguePins, 1);
-	      if (_analogueInputStates  != NULL &&
-		  _analogueInputBuffer != NULL &&
-		  _analoguePinMap != NULL) {
-		_analoguePinBytes = analogueBytesNeeded;
-	      } else {
-		DIAG(F("EX-IOExpander I2C:%s ERROR alloc analog pin bytes"), _I2CAddress.toString());
-		_deviceState = DEVSTATE_FAILED;
-		_analoguePinBytes = 0;
-		return;
-	      }
-	    }
-	  }
-	} else {
-      DIAG(F("EX-SensorCAM I2C:%s ERROR configuring device"), _I2CAddress.toString());
-      _deviceState = DEVSTATE_FAILED;
-      return;
-    }
-      }
+          size_t analogueBytesNeeded = _numAnaloguePins * 2;
+          if (_analoguePinBytes < analogueBytesNeeded) {
+            // Free any existing buffers and allocate new ones.
+            if (_analoguePinBytes > 0) {
+              free(_analogueInputBuffer);
+              free(_analogueInputStates);
+              free(_analoguePinMap);
+            }
+            _analogueInputStates = (uint8_t*) calloc(analogueBytesNeeded, 1);
+            _analogueInputBuffer = (uint8_t*) calloc(analogueBytesNeeded, 1);
+            _analoguePinMap = (uint8_t*) calloc(_numAnaloguePins, 1);
+            _analoguePinBytes = analogueBytesNeeded;
+          }
+        } else {
+          DIAG(F("EX-SensorCAM I2C:%s ERROR configuring device"), _I2CAddress.toString());
+          _deviceState = DEVSTATE_FAILED;
+          return;
+        }
+      } 
       // We now need to retrieve the analogue pin map
-      if (status == I2C_STATUS_OK && _numAnaloguePins>0) {
+      if (status == I2C_STATUS_OK) {
         commandBuffer[0] = EXIOINITA;
         status = I2CManager.read(_I2CAddress, _analoguePinMap, _numAnaloguePins, commandBuffer, 1);
 /***/ // If ESP32 CAM read again for good data
@@ -176,8 +155,7 @@ private:
           _minorVer = versionBuffer[1];
           _patchVer = versionBuffer[2];
         }
-        DIAG(F("EX-SensorCAM device found, I2C:%s, Version v%d.%d.%d"),
-            _I2CAddress.toString(), _majorVer, _minorVer, _patchVer);
+        DIAG(F("EX-SensorCAM device found, I2C:%s, Version v%d.%d.%d"),_I2CAddress.toString(), _majorVer, _minorVer, _patchVer);
 
 #ifdef DIAG_IO
         _display();
@@ -202,8 +180,7 @@ bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params
       uint8_t pullup = params[0];
       uint8_t outBuffer[] = {EXIODPUP, (uint8_t)pin, pullup};
       uint8_t responseBuffer[1];
-      uint8_t status = I2CManager.read(_I2CAddress, responseBuffer, sizeof(responseBuffer),
-                                outBuffer, sizeof(outBuffer));
+      uint8_t status = I2CManager.read(_I2CAddress, responseBuffer, sizeof(responseBuffer), outBuffer, sizeof(outBuffer));
       if (status == I2C_STATUS_OK){
 /***/ //    first packet read from ESP32 is expected to be old EXIORDD so read again 
 
@@ -243,7 +220,7 @@ bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params
       reportError(status);
 
     return false;
-  }
+  } 
 
   // Main loop, collect both digital and analogue pin states continuously (faster sensor/input reads)
   void _loop(unsigned long currentMicros) override {
@@ -280,7 +257,7 @@ bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params
 
     // If we're not doing anything now, check to see if a new input transfer is due.
     if (_readState == RDS_IDLE) {
-      if (_numDigitalPins>0 && currentMicros - _lastDigitalRead > _digitalRefresh) { // Delay for digital read refresh
+        if (currentMicros - _lastDigitalRead > _digitalRefresh) { 
         // Issue new read request for digital states.  As the request is non-blocking, the buffer has to
         // be allocated from heap (object state).
         _readCommandBuffer[0] = EXIORDD;
@@ -288,7 +265,7 @@ bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params
                                                                 // non-blocking read
         _lastDigitalRead = currentMicros;
         _readState = RDS_DIGITAL;
-      } else if (_numAnaloguePins>0 && currentMicros - _lastAnalogueRead > _analogueRefresh) { // Delay for analogue read refresh
+      } else if (currentMicros - _lastAnalogueRead > _analogueRefresh) { // Delay for analogue read refresh
         // Issue new read for analogue input states
         _readCommandBuffer[0] = EXIORDAN;
         I2CManager.read(_I2CAddress, _analogueInputBuffer,
@@ -344,14 +321,14 @@ bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params
  /***/ // read again if ESP32 
     if (status == I2C_STATUS_OK) {
 //   first packet read from ESP32 is expected to be old EXIORDD so read again 
-  int errors = ioESP32(_I2CAddress, responseBuffer, 1, digitalOutBuffer, 3); 
-      if ((errors==0) && (responseBuffer[0] == EXIORDY)) {
+    int errors = ioESP32(_I2CAddress, responseBuffer, 1, digitalOutBuffer, 3); 
+        if ((errors==0) && (responseBuffer[0] == EXIORDY)) {
             return ;
-      }else {
-        DIAG(F("Vpin %u cannot be used as a digital output pin"), (int)vpin);
-      }
+        }else {
+          DIAG(F("EX-SensorCAM: Vpin %u cannot be used as a digital output pin"), (int)vpin);
+        }
     }else{
-	  reportError(status);
+	    reportError(status);
       return ;
 	  }
   }
@@ -421,9 +398,9 @@ uint8_t status = _i2crb.status;
             }            
             if(sensorCmd=='t') {                                            //threshold etc. from t##
               Sp("(t[##[,##]]) Threshold:"); Sp(rBuf[1]);Sp(" sensor S00:"); Sp("-");Sp(rBuf[2]&0x7F);
-              if(rBuf[2]>127) Sp("##*\n"); 
+              if(rBuf[2]>127)Sp("##*\n"); 
               else{ 
-				if(rBuf[2]>rBuf[1]) Sp("-?*\n"); 
+				if(rBuf[2]>rBuf[1])Sp("-?*\n"); 
 				else Sp("--*\n");
 			  }
               for(int i=3;i<31;i+=2){
@@ -451,16 +428,17 @@ uint8_t status = _i2crb.status;
   // Write analogue (integer) value.  Write the parameters (blocking I2C) to the
   // IOExpander node.  As it is a blocking request, we can use buffers allocated from
   // the stack to reduce RAM allocation.
-  void _writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration) override {
+void _writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration) override {
     uint8_t servoBuffer[7];
     uint8_t responseBuffer[32];
     int errors;
+    uint8_t status;
 
     if (_deviceState == DEVSTATE_FAILED) return;
     int pin = vpin - _firstVpin;
 #ifdef DIAG_IO
-    DIAG(F("Servo: WriteAnalogue Vpin:%u Value:%d Profile:%d Duration:%d %S"), 
-      vpin, value, profile, duration, _deviceState == DEVSTATE_FAILED?F("DEVSTATE_FAILED"):F(""));
+/***/ /*    DIAG(F("Servo: WriteAnalogue Vpin:%u Value:%d Profile:%d Duration:%d %S"), 																					   
+      vpin, value, profile, duration, _deviceState == DEVSTATE_FAILED?F("DEVSTATE_FAILED"):F("")); */
 #endif
     servoBuffer[0] = EXIOWRAN;
     servoBuffer[1] = pin;
@@ -470,14 +448,14 @@ uint8_t status = _i2crb.status;
     servoBuffer[5] = duration & 0xFF;
     servoBuffer[6] = duration >> 8;
 /***/ // If ESP32 CAM use ioESP32()	
-    if(_I2CAddress>ESP32CAP) {	//normal expander
-      uint8_t status = I2CManager.read(_I2CAddress, responseBuffer, 1, servoBuffer, 7);
-      if (status != I2C_STATUS_OK) {
-        DIAG(F("EX-SensorCAM I2C:%s Error:%d %S"), _I2CAddress.toString(), status, I2CManager.getErrorMessage(status));
-        _deviceState = DEVSTATE_FAILED;
-      }
-		
-    } else {    // If ESP32 CAM use ioESP32()
+      if(_I2CAddress>ESP32CAP) {	//normal expander
+        status = I2CManager.read(_I2CAddress, responseBuffer, 1, servoBuffer, 7);
+        if (status != I2C_STATUS_OK) {
+          DIAG(F("EX-SensorCAM I2C:%s Error:%d %S"), _I2CAddress.toString(), status, I2CManager.getErrorMessage(status));
+          _deviceState = DEVSTATE_FAILED;
+        }  
+      } 
+/***/ else {    // If ESP32 CAM use ioESP32()
         errors = ioESP32(_I2CAddress, responseBuffer, 1, servoBuffer, 7);  //use only for commands responding with EXIORDY  
         if ((errors==0) && (responseBuffer[0] == EXIORDY)) {
             return;
@@ -504,7 +482,7 @@ uint8_t status = _i2crb.status;
     if (fail)
     _deviceState = DEVSTATE_FAILED;
   }
- byte ESP32flag =0;
+byte ESP32flag =0;
   uint8_t _numDigitalPins = 0;
   uint8_t _numAnaloguePins = 0;
 
@@ -512,14 +490,14 @@ uint8_t status = _i2crb.status;
   uint8_t _minorVer = 0;
   uint8_t _patchVer = 0;
 
-  uint8_t* _digitalInputStates  = NULL;
-  uint8_t* _analogueInputStates = NULL;
-  uint8_t* _analogueInputBuffer = NULL;  // buffer for I2C input transfers
+  uint8_t* _digitalInputStates;
+  uint8_t* _analogueInputStates;
+  uint8_t* _analogueInputBuffer;  // buffer for I2C input transfers
   uint8_t _readCommandBuffer[1];
 
-  uint8_t _digitalPinBytes = 0;   // Size of allocated memory buffer (may be longer than needed)
-  uint8_t _analoguePinBytes = 0;  // Size of allocated memory buffer (may be longer than needed)
-  uint8_t* _analoguePinMap = NULL;
+  uint8_t _digitalPinBytes = 0;  // Size of allocated memory buffer (may be longer than needed)
+  uint8_t _analoguePinBytes = 0;  // Size of allocated memory buffers (may be longer than needed)
+  uint8_t* _analoguePinMap;
   I2CRB _i2crb;
 
   enum {RDS_IDLE, RDS_DIGITAL, RDS_ANALOGUE};  // Read operation states
