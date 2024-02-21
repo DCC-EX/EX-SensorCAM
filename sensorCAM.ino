@@ -1,6 +1,8 @@
+//sensorCAM Alpha release
 
-//.......1.........2.........3.........4.........5.........6.........7.........8.........9 LANDSCAPE PAGE LIMIT >| Wordpad >|
-#define BCDver 158
+#define BCDver 160
+    //v160 added scroll toggle control to 't1/t 1'.  Limit threshold >30 (t31 makes all occupied) & multiple rows
+    //v159 added 'F' to cmds[] from EX-CS and changed 'F' to Force Reset without confirmation \n          limit >|
     //v158 amended to use configCAM.h
     //v157 modified to allow EX-CS to operate on fewer vpins (0 Analog) and control through lowest vpin (700)
     //v156 tidied up a little bsNo to bsn, added A%d to 'i', changed many texts "active" to "enabled"
@@ -77,11 +79,12 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #define EPSensorTwin   EEPROM_SIZE-80  //save SensorTwin array
                                       //maxSensors may also be used to avoid other wasted processing time.
 // WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
- 
+
 #define RGB565p  2                // bytes per pixel in RGB565 image
 
 bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false}; //show detail debug to USB output
 #define AS   Serial           //Arduino Serial abbreviation
+#define IFS  if(scroll==true) //output progressive scroll data
 #define prn  Serial.print     //further shortens print statements.
 #define IF0  if(DEBUG[0])     //Higher priority debug
 #define IFT  if(DEBUG[1])     //Debug control of timing output
@@ -93,7 +96,7 @@ bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false};
                  //IFd 6)     grab_ref message printed on full execution of S666init_SensorRefs(prefill) 
                  //IFd 7)     stop/wait on a trip of block # or sensor 16. only if LAST 'h' was h7 
                  //IFd 8)     write EX-CS cmd to USB e.g. EXIODPUP gives "E2", undefined commands give "#EF" error
-
+ 
 #define S666_pitch 48         //length of one sensor rgb666 data of 16 pixels  4x4x3bytes saved in Sensor666[]
 #define S666_row   12         //length of row for one sensor (_pitch= s666_row x 4(rows) (for QVGA resolution) 4x3
 #define AVCOUNT 32            //Nominate the number of frames to average for 'r' reference image
@@ -235,6 +238,7 @@ int  dispX=0;           //default starting column byte for sample dump
 long bright_spot=0;     //pointer to the brightest spot in BMP/RGB666 image
 char zStr[13];          //used to print long integers using ltoa()
 char i2cData[64];       //array of sensor status data to send on 't' request
+bool scroll=true;       //if false suppress scrolling output (use 't0')
 int  i2cDatai=0;        //array index
 
 int  threshold=45;      //difference (max Xratio+brightnessRatio) threshold for occupancy
@@ -510,7 +514,7 @@ void loop() {
 // ***CALCULATE AND PRINT LOOP TIME - & IF CALLED FOR, UPDATE NEW CAMERA SETTINGS   
 /***/ { IFT AS.print("\n******** ");
 /***/   timerLoop=millis()-timerLoop; if(timerLoop==99) timerLoop=100;
-/***/   AS.print(timerLoop); AS.print("mS; ");    //add 1 just to stop display jitter with 99
+/***/   IFS{ AS.print(timerLoop); AS.print("mS; "); }   //add 1 just to stop display jitter with 99
 /***/   timerLoop=millis();
 /***/ }
       HistoLoops++;                 //increment loop counter
@@ -736,7 +740,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
           refBrightness=Sen_Brightness_Ref[0];   //a refBrightness from last time ALL references updated (startup, 'r00' or 'c' only)             
           refActual=quad[4];   //save refActual in case use later
 /***/     IFT { AS.print(refBrightness);AS.print(" refBrightness > actual ");AS.println(refActual);}  //sensor[00]
-          else { AS.print(" T");AS.print(threshold);AS.print(" N");AS.print(nLED);AS.print(" R");
+          else IFS{ AS.print(" T");AS.print(threshold);AS.print(" N");AS.print(nLED);AS.print(" R");
             AS.print(refBrightness);AS.print(" A");AS.print(refActual);
             AS.print(" M");AS.print(min2flip);AS.print("  \t");   //short & no \n
           }
@@ -749,8 +753,8 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
       
       timer=micros()-timer;
 /***/  IFT {AS.print("Compare(uS): "); AS.print(timer,DEC);}
-      if(bsnUpdated>=0) {AS.print("Ref 0");AS.print(bsnUpdated,OCT);bsnUpdated=-1;} 
-      AS.println("");              //was consistently getting same No. from (timer,DEC) & (zStr) (until neg nos)
+      if(bsnUpdated>=0) { IFS{ AS.print("Ref 0");AS.print(bsnUpdated,OCT);} bsnUpdated=-1;} 
+      IFS AS.println("");              //was consistently getting same No. from (timer,DEC) & (zStr) (until neg nos)
  
 // ****CHECK DFLAG AND OUTPUT REQUESTED INFO.  (BUG - doesn't look like it prints requested dbsNo DIFFERENCES only LAST active sensor leftover?)
         //if dFlag==0 just output diffs. if dFlag >0 output image table and repeat dFlag times
@@ -819,7 +823,8 @@ void processCmd(byte *imagePtr,int pitch,unsigned long *Sensor){                
 int b=0;        //local (block) variable
 int c, i, j;    //j: sensor index
 int bsn; 
-/***/ IFI2C for(i=0;i<12;i++) AS.print(char(cmdString[i]));   
+/***/ IFI2C for(i=0;i<12;i++) AS.print(char(cmdString[i]));
+    if(cmdString[1]==' ') for(i=1;i<64;i++) cmdString[i]=cmdString[i+1];   
     switch(cmdString[0]) {  
       case 'a':{      //a##;  Activate Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
         bsn = get_bsNo(cmdString); absNo1=cmdString[1]; absNo2=cmdString[2];    //save bsNo digits 
@@ -1144,7 +1149,11 @@ int bsn;
       }     
       case 't':{      //t_:  Set threshold 1 to 250 for sensor "trip", send value to USB (& i2c)
         error = get_number(cmdString);  //no number returns 0
-        if(error > 0) threshold=error;  // will be permanent only use 'e' command (along with sensor changes and nLED)
+        if(error > 30) threshold=error;  // will be permanent only use 'e' command (along with sensor changes and nLED)
+        else if(error==1) {
+              scroll=!scroll;  //use to hide scrolling status data.
+              if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
+        }
         printf("(t##) Threshold: trip set to %d\n", threshold);
         if(cmdString[3]==',') { 
           error = get_number(&cmdString[3]);  //get second parameter
@@ -1175,7 +1184,7 @@ int bsn;
       }
       case 'F':       //F;  Finish = Reset.  Added so Bluetooth phone can send a reset ('R' not on keyboard)
       case 'R': {     //R;  Reset command reboots the CAM in Sensor mode and restores parameters from EPROM
-        if(!isdigit(cmdString[1])){                          //a digit forces Restart immediately for EX-CS
+        if(cmdString[0]!='F'){                          //'F' forces Restart immediately (for EX-CS)
           printf("Reset: Waiting for new line to trigger reset in Sensor Mode - 'aw' will abort 'R' and wait\n");
           while (!AS.available() && !newi2cCmd) delay(10);  //stops looping indefinitely until input a newline (\n)
           cmdChar=AS.read();       
@@ -1671,24 +1680,28 @@ bool processDiff(int bsn){
           
           if(SensorFilter[bsn]>0){ SensorFilter[bsn]-=1;        //only clear block bit after 2nd or 3rd "unoccupied"
  /***/      if(bsn<maxSensors){ i2cData[i2cDatai-2] |= 0x80;    //flag as uncertain for i2c
-              if(bsn<8)AS.print("0");AS.print(bsn,OCT); AS.print(":?_");AS.print(bpd); 
-              if(SensorStat[bsn]){AS.print(OCc);AS.print(OCc);if(OCc!=char(12))AS.print('*');AS.print(" ");} //Ch(12) Arduino font 1.5 times width!
-              else AS.print("_?* ");
+              IFS {
+                if(bsn<8)AS.print("0");AS.print(bsn,OCT); AS.print(":?_");AS.print(bpd); 
+                if(SensorStat[bsn]){AS.print(OCc);AS.print(OCc);if(OCc!=char(12))AS.print('*');AS.print(" ");} //Ch(12) Arduino font 1.5 times width!
+                else AS.print("_?* ");
+              }
             }
           }else{        //sustained LOW, so set UN-OCCUPIED
             SensorStat[bsn]=false; SensorFilter[bsn] =1-min2flip;  //reset filter (-ve) to count UP towards occupied if needed  (-1 requires 2 "occupieds")
             SensorBlockStat[b]= SensorBlockStat[b] & ~mask[bsn&7]; //clear SensorBlock bit
             if(SensorBlockStat[b]==0) setLED(b,false);             //if whole block unoccupied, clear LED
 /***/       if(bsn<maxSensors){
-              if(bsn<8)AS.print("0");AS.print(bsn,OCT);AS.print(":--");AS.print(bpd);AS.print("--* ");
+              IFS {if(bsn<8)AS.print("0");AS.print(bsn,OCT);AS.print(":--");AS.print(bpd);AS.print("--* ");}
             }
           }
         }else{          //high diff thinks OCCUPIED
           SensorHiCount[bsn]+=1;           // increment Hi counter for histogram 
           if(SensorFilter[bsn]<0){ SensorFilter[bsn]+=1;        //only clear block bit after 2nd or 3rd "occupied"
 /***/       if(bsn<maxSensors){i2cData[i2cDatai-2] |= 0x80;     //flag as undecided for i2c
-              if(bsn<8)AS.print("0");
-              AS.print(bsn,OCT); AS.print(":?_");AS.print(bpd);AS.print("_?* ");
+              IFS{ 
+                if(bsn<8)AS.print("0");
+                AS.print(bsn,OCT); AS.print(":?_");AS.print(bpd);AS.print("_?* ");
+              }
             }
           }else{        //sustained HIGH, so set OCCUPIED (if Twin agrees) 
             if((SensorTwin[bsn]<=0) || (SensorStat[SensorTwin[bsn]])) {   //only trip if TWIN agrees!
@@ -1698,15 +1711,19 @@ bool processDiff(int bsn){
               setLED(b,true);                                     //turn occupied LED on
               if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;    //flag as occupied for i2c
                 emptyStateCtr[bsn]=0;                             //clear "untripped" counter
-/***/           if(bsn<8)AS.print("0");
-                AS.print(bsn,OCT);{if(bpd>99)AS.print(":o"); else AS.print(":oo");}
+/***/           IFS{
+                  if(bsn<8)AS.print("0");
+                  AS.print(bsn,OCT);{if(bpd>99)AS.print(":o"); else AS.print(":oo");}
                   AS.print(bpd);AS.print(OCc);AS.print(OCc);if(OCc!=char(12))AS.print('*'); AS.print(" ");
+                }
               }
             }else{      //twin disagrees            
               if(bsn<maxSensors){
-                if(bsn<8)AS.print("0");
-                AS.print(bsn,OCT);{if(bpd>99)AS.print(":o"); else AS.print(":oo");}
-                AS.print(bpd);AS.print('?');AS.print('T');AS.print('*'); AS.print(" ");
+                IFS{
+                  if(bsn<8)AS.print("0");
+                  AS.print(bsn,OCT);{if(bpd>99)AS.print(":o"); else AS.print(":oo");}
+                  AS.print(bpd);AS.print('?');AS.print('T');AS.print('*'); AS.print(" ");
+                }
               }
             }
           }
@@ -1975,7 +1992,7 @@ const int numDigBytes=(NUMdigPins+7)>>3;
         }
 /***/   IFI2C { Serial.print(i2cCmdBuf[1],HEX);   Serial.print(i2cCmdBuf[2],HEX); }
         if((y==80) || (valu>=240)){                    // primary command vpin
-const char cmds[]={'o','l','a','n','r','s','u','-','-','-','\n','w','g','e','m','v','R','-','-','-'};
+const char cmds[]={'o','l','a','n','r','s','u','F','-','-','\n','w','g','e','m','v'};
            y=i2cCmdBuf[4]%240;              //get command #
            valu=x%100;  //(256*i2cCmdBuf[3]+i2cCmdBuf[2])%100;    //get bsNo from id limit < 100
            if((valu<=9) && (y==3)) valu=valu*10;   //fix for n#0
@@ -1986,9 +2003,10 @@ const char cmds[]={'o','l','a','n','r','s','u','-','-','-','\n','w','g','e','m',
              return 3;
            }
            i2cCmdBuf[0]=cmds[y];
-           if((y>=10) && (y<=13)) {         //10,11,12  \n w e (1 char. commands) 
+           if(y==7) 
              return 1;
-           }
+           if((y>=10) && (y<=13))          //10,11,12,13  \n w g e (1 char. commands) 
+             return 1;
            if(y==14){                       //m# or m#,$$  variable
              i2cCmdBuf[0]='m';
              i2cCmdBuf[1]=x/100 + 0x30;         
