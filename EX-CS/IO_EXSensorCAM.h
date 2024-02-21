@@ -1,4 +1,4 @@
-/*  17/02/24 
+/*  21/02/24 
  *  © 2022, Peter Cole. All rights reserved.
  *  © 2023, Barry Daniel ESP32 revision 
  *  © 2024, Harald Barth. All rights reserved.
@@ -152,7 +152,7 @@ private:
 	} else {
       DIAG(F("EX-SensorCAM I2C:%s ERROR configuring device"), _I2CAddress.toString());
       _deviceState = DEVSTATE_FAILED;
-      return;
+	  return;
     }
       }
       // We now need to retrieve the analogue pin map
@@ -195,7 +195,7 @@ private:
   // Digital input pin configuration, used to enable on EX-IOExpander device and set pullups if requested.
   // Configuration isn't done frequently so we can use blocking I2C calls here, and so buffers can
   // be allocated from the stack to reduce RAM allocation.
-bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override {
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override {
     if (paramCount != 1) return false;
     int pin = vpin - _firstVpin;
     if (configType == CONFIGURE_INPUT) {
@@ -204,7 +204,7 @@ bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params
       uint8_t responseBuffer[1];
       uint8_t status = I2CManager.read(_I2CAddress, responseBuffer, sizeof(responseBuffer),
                                 outBuffer, sizeof(outBuffer));
-      if (status == I2C_STATUS_OK){
+      if (status == I2C_STATUS_OK) {
 /***/ //    first packet read from ESP32 is expected to be old EXIORDD so read again 
 
    int errors = ioESP32(_I2CAddress, responseBuffer, 1, outBuffer,3);  //use only for commands responding with EXIORDY  
@@ -421,10 +421,10 @@ uint8_t status = _i2crb.status;
             }            
             if(sensorCmd=='t') {                                            //threshold etc. from t##
               Sp("(t[##[,##]]) Threshold:"); Sp(rBuf[1]);Sp(" sensor S00:"); Sp("-");Sp(rBuf[2]&0x7F);
-              if(rBuf[2]>127) Sp("##*\n"); 
+              if(rBuf[2]>127) Sp("##* "); 
               else{ 
-				if(rBuf[2]>rBuf[1]) Sp("-?*\n"); 
-				else Sp("--*\n");
+				if(rBuf[2]>rBuf[1]) Sp("-?* "); 
+				else Sp("--* ");
 			  }
               for(int i=3;i<31;i+=2){
                 valu=rBuf[i];               //get bsn
@@ -478,17 +478,27 @@ uint8_t status = _i2crb.status;
       }
 		
     } else {    // If ESP32 CAM use ioESP32()
-        errors = ioESP32(_I2CAddress, responseBuffer, 1, servoBuffer, 7);  //use only for commands responding with EXIORDY  
-        if ((errors==0) && (responseBuffer[0] == EXIORDY)) {
-            return;
-        }
-      }
- 
-      if (responseBuffer[0] != EXIORDY) {
-        DIAG(F("Vpin %u cannot be used as a servo/PWM pin"), (int)vpin);
-      }
+        int rept=1; 
+		if(servoBuffer[4]==249) if(value<31) rept=value;   //repeated calls if param < 31
+		for (int rep=1;rep<=rept;rep++) { 
+			errors = ioESP32(_I2CAddress, responseBuffer, 1, servoBuffer, 7);  //use only for commands responding with EXIORDY  			    			   
+			servoBuffer[0] = EXIOWRAN;						//restore buffer
+			servoBuffer[1] = pin;
+			servoBuffer[2] = value & 0xFF;
+			servoBuffer[3] = value >> 8;
+			servoBuffer[4] = profile;
+			servoBuffer[5] = duration & 0xFF;
+			servoBuffer[6] = duration >> 8;
+			if(profile=249) delay(100);				//wait for new frame
+		}
+		if ((errors==0) && (responseBuffer[0] == EXIORDY)) {
+           return;
+		}
+		if (responseBuffer[0] != EXIORDY) {
+			DIAG(F("Vpin %u cannot be used as a servo/PWM pin"), (int)vpin);
+		}
+	}
   }
-
   // Display device information and status.
   void _display() override {
     DIAG(F("EX-SensorCAM I2C:%s v%d.%d.%d Vpins %u-%u %S"),
@@ -504,7 +514,7 @@ uint8_t status = _i2crb.status;
     if (fail)
     _deviceState = DEVSTATE_FAILED;
   }
- byte ESP32flag =0;
+ //byte ESP32flag =0;
   uint8_t _numDigitalPins = 0;
   uint8_t _numAnaloguePins = 0;
 
