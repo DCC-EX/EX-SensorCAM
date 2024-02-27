@@ -1,12 +1,13 @@
-//sensorCAM Alpha release
+//sensorCAM Alpha release                                                                                 limit >|
 
-#define BCDver 160
-    //v160 added scroll toggle control to 't1/t 1'.  Limit threshold >30 (t31 makes all occupied) & multiple rows
-    //v159 added 'F' to cmds[] from EX-CS and changed 'F' to Force Reset without confirmation \n          limit >|
+#define BCDver 161
+    //v161 some code housekeeping and modified use of SUPPLY (50/60Hz) & CYCLETIMECTR & BRIGHTSF
+    //v160 added scroll toggle control to 't1/t 1'.  Limit threshold >30 (t31 makes all occupied) <multiple rows>
+    //v159 added 'F' to cmds[] from EX-CS and changed 'F' to Force Reset without confirmation \n          
     //v158 amended to use configCAM.h
     //v157 modified to allow EX-CS to operate on fewer vpins (0 Analog) and control through lowest vpin (700)
     //v156 tidied up a little bsNo to bsn, added A%d to 'i', changed many texts "active" to "enabled"
-    //v155 added i2c console output on 'm' cmd.  Introduced minSensors to t##,## and m
+    //v155 added i2c console output on 'm' cmd.  Introduced minSensors to t%%,## and m
     //v154 added i2c console output on 'i' cmd also 't' command
     //v153 added <D ANOUT 780 id cmds> for afiklnorsuv etc. at vpin 780
     //v152 implemented EXwait fn on vpin #81, and 'r' & 'a' enable on 01-79 using <Z id+100 
@@ -19,10 +20,13 @@
   #warning configCAM.h not found. Using defaults from configCAM.example.h
   #include "configCAM.example.h"
 #endif
- 
-#define NUMdigPins   80   //Nano emulation only at this stage (must be < 16 x NUManalogPins)
+#define NUMdigPins   80   //CS can create fewer to save memory.
 #define NUManalogPins 0   //must be 4 for UNO emulation
-
+//#define SUPPLY   10     //see configCAM.h - set period to 10 half-cycles of mains (50Hz) (use 25 for 60Hz)
+#define CYCLETIMECTR (100-7)*1000  //100mSec cycle time less sync allowance.
+#ifndef BRIGHTSF
+#define BRIGHTSF 3		  //increases sensitivity.  If 1, 20% change adds 3*SF to diff. 5% is ignored 
+#endif
 #define EXIOINIT 0xE0
 #define EXIORDY  0xE1     //OK & ready for next ioexpander cmd
 #define EXIODPUP 0xE2 
@@ -60,7 +64,7 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #define BLK1LED 33        // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
 #define BLK2LED 33        //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
 #define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
-#define pLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a block status to the pLED
+#define pLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the pLED
                           //GPIO14 multipurposed - LED pulls GPI14 high. Need to Gnd GPIO14 to select web server.
 //#define GPIO16  16      //GPIO16 is used for PSRAM and CAN NOT be repurposed!
        //GPIO0 unavailable. Need to Gnd GPIO0 to program then needed for CAM CSI_MCLK
@@ -85,54 +89,54 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false}; //show detail debug to USB output
 #define AS   Serial           //Arduino Serial abbreviation
 #define IFS  if(scroll==true) //output progressive scroll data
-#define prn  Serial.print     //further shortens print statements.
+#define Spr  Serial.print     //further shortens print statements.
 #define IF0  if(DEBUG[0])     //Higher priority debug
 #define IFT  if(DEBUG[1])     //Debug control of timing output
 #define IFD  if(DEBUG[2])     //Lower priority Debug control
 #define IFI2C if(DEBUG[3])    //output generated i2c packets 
 #define IFN  if(DEBUG[4])     //output relating to pixel noise measurements
-#define IF5  if(DEBUG[5]}
+#define IF5  if(DEBUG[5]}     //not used
 #define IFd   if(dbug==        //can set dbug to 0 to 9 using 'h#' cmd. IFd #) only execute after 'h#'  
                  //IFd 6)     grab_ref message printed on full execution of S666init_SensorRefs(prefill) 
-                 //IFd 7)     stop/wait on a trip of block # or sensor 16. only if LAST 'h' was h7 
+                 //IFd 7)     stop/wait on a trip of bank # or sensor 16. only if LAST 'h' was h7 or h7#
                  //IFd 8)     write EX-CS cmd to USB e.g. EXIODPUP gives "E2", undefined commands give "#EF" error
- 
 #define S666_pitch 48         //length of one sensor rgb666 data of 16 pixels  4x4x3bytes saved in Sensor666[]
 #define S666_row   12         //length of row for one sensor (_pitch= s666_row x 4(rows) (for QVGA resolution) 4x3
 #define AVCOUNT 32            //Nominate the number of frames to average for 'r' reference image
 #define NUM2AVERAGE 32        //variables for auto references averaging & updating for unoccupied enabled sensors
 
+
 /*  sensorCAM commands:
-s## * Scan for new location for sensor ## (00-97). If found, records location in Sensor[##]. Further setup needed. 
+s%% * Scan for new location for sensor %% (00-97). If found, records location in Sensor[%%]. Further setup needed. 
         Scan looks for a bright LED on a dimmer background.  The LED should be placed on the desired sensor pos'n.  
-        If satisfied with the scan, the user should REMOVE the LED, set lighting, and do an r## to set enabled AND 
+        If satisfied with the scan, the user should REMOVE the LED, set lighting, and do an r%% to set enabled AND 
         record a new reference image (also computes colour ratios & brightness) The location must be unoccupied!
 w   * Wait for new command line (\n) before resuming loop().   (handy to stop display data scrolling)
-a##   Activate sensor[##]  & refresh Sensor_ref[##], cRatios etc. from the [##] image (48 bytes) in latest frame.
-a##,rrr,xxx   * Set coordinates of Sensor[##] to row/col: rr/xxx AND activate and auto ref.   Verify with p$ cmd.    
-b$    Block $ sensors.  Show which sensors OCCUPIED (in bits 7-0).   1=occupied.      <i2c Request $+1 data bytes>  
+a%%   Activate sensor[%%]  & refresh Sensor_ref[%%], cRatios etc. from the [%%] image (48 bytes) in latest frame.
+a%%,rrr,xxx   * Set coordinates of Sensor[%%] to row/col: rr/xxx AND activate and auto ref.   Verify with p$ cmd.    
+b$    bank $ sensors.  Show which sensors OCCUPIED (in bits 7-0).   1=occupied.      <i2c Request $+1 data bytes>  
 c$$$$ * reCalibrate camera CCD occasionally and grab new references for all enabled sensors. (Beware of doing this
-        while any sensors are occupied!  Obstructed sensors will later need an r##   Check all block LEDS are off 
+        while any sensors are occupied!  Obstructed sensors will later need an r%%   Check all bank LEDS are off 
         AND check all sensors are unoccupied before recalibrate.  Can set BRI CON SAT AWB through c$$$$ e.g. c0120
         Can change default setting for AWBg,AEC,AECd,AEL,AGC,AGg with six extras: c$$$$1111119. c$$$$ resets them!
-d##n *Difference score in colour & brightness between Ref  & actual image.  Show n grabs.   <Request 4 data bytes>
+d%%# *Difference score in colour & brightness between Ref  & actual image.  Show # grabs.   <Request 4 data bytes>
 e   * EPROM save of any new Sensor offset positions & 4 parameters.    Warning: May only work once per reset
-f## * Frame buffer sample display. Prints latest image of Sensor[00] & Sensor[##] positions. <Requests 4x28 bytes>
+f%% * Frame buffer sample display. Prints latest image of Sensor[00] & Sensor[%%] positions. <Requests 4x28 bytes>
 g   * Get Camera Status. Displays most current settings available in webcam window.  (also works in video mode)
 h$    Help(debug)output -  h to turn OFF, h0 turns ON detailed USB output. h1:more; h2:timing; h3:i2c; h4:Noise
-i## * Individual sensor ## Information. Optional i##,$$ sets a Twin sensor[$$] for S##. <i2c Request 2 data bytes>
+i%% * Individual sensor %% Information. Optional i%%,$$ sets a Twin sensor[$$] for S%%. <i2c Request 2 data bytes>
 j$#   adJust camera setting $ to value # and display most settings (as for ‘g’) ‘j’ does NOT get new refs. - use r  
-k##,rrr,xxx   * Set coordinates of Sensor[##] to row: rrr &  xVal: xxx. Follow with r##. Verify values with p$ cmd 
-l##   (Lima) force sensor ## to ON (1= occupied (LED lit) & also set SensorActive[##] false to inactivate updating
+k%%,rrr,xxx   * Set coordinates of Sensor[%%] to row: rrr &  xVal: xxx. Follow with r%%. Verify values with p$ cmd 
+l%%   (Lima) force sensor %% to ON (1= occupied (LED lit) & also set SensorActive[%%] false to inactivate updating
 m$  * Min. no.($) of sequential frames to trigger Occupied threshold for detection (default 2). (m$,%% maxSensors)    
-n$  * block Number $ assignment to the programmable LED to show its occupancy status.
-o##   (Oscar)force sensor ## off (0=UN-occupied (LED off) & also set SensorActive[##] false to inactivate updating
-p$  * Position Pointer table for blocks 0 to $ giving DEFINED sensor r/x positions.  p## shorter.  <32 data bytes>
-q$  * Query block $, to show which sensors enabled (in bits 7-0). 1=enabled. q9 gives ALL   <Request $+2 data bytes>
-r##   Renew Average Sensor_Ref[##] (If defined), set enabled, calc. cRatios etc. & (h4) display  sensor[##] image. 
+n$  * bank Number $ assignment to the programmable LED to show its occupancy status.
+o%%   (Oscar)force sensor %% off (0=UN-occupied (LED off) & also set SensorActive[%%] false to inactivate updating
+p$  * Position Pointer table for banks 0 to $ giving DEFINED sensor r/x positions.  p%% shorter.  <32 data bytes>
+q$  * Query bank $, to show which sensors enabled (in bits 7-0). 1=enabled. q9 gives ALL    <Req. $+2 data bytes>
+r%%   Renew Average Sensor_Ref[%%] (If defined), set enabled, calc. cRatios etc. & (h4) display  sensor[%%] image. 
 r00   Renew Average Refs etc. for ALL defined sensors.  Ignores active[].  Sensor 00 reserved for brightness ref.
-t   * Threshold byte (minDiff trigger) being used for detection (optional t$$ sets 32-99). <Request 1+ data bytes>
-u## * Un-define/remove sensor ## by setting INACTIVE & Sensor[##]=0. u99 erases ALL. Needs ‘e’ to erase from EPROM
+t## * show Threshold level being used for detection (optional ## sets 32-99) t1 toggle data scroll <Req. 1+ bytes>
+u%% * Un-define/remove sensor %% by setting INACTIVE & Sensor[%%]=0. u99 erases ALL. Needs ‘e’ to erase from EPROM
 v   * Video mode.  Reboots CAM in webserver mode. “v2” will connect to 2nd (alt.) router ssid.("ve" gives version)
 x###  Sets column for start of Processing image transfer (0-318)
 y###  Suspend imaging. Proceeds to write header and Zlength row### pixels to USB port for Processing. 'yy' resumes
@@ -171,24 +175,24 @@ int  HistoLoops=0;
 int  SensorHisto[80*5];
 uint32_t i2cCtr = 0;          //prepare for i2c       
 bool CmdI2C=false;
-int  nLED=2;                  //Blk No assigned to programmable LED - initially block 2
+int  nLED=2;                  //Blk No assigned to programmable LED - initially bank 2
 int  maxSensors=050;          //use to limit USB PRINTOUT time & line length 
 unsigned int  minSensors=000;           //a lower limit for sensor data output
     //used if using more sensors than can otherwise be processed in 100mSec.(42-> max bsNo=51 (5*8+1) ). It limits
     //monitor output (if more than 40, sensors loop time may suffer because of printout time to monitor)
-unsigned long Sensor[80];     //from EEPROM array of xy coordinates for 10 blocks of 8 sensors.   
+unsigned long Sensor[80];     //from EEPROM array of xy coordinates for 10 banks of 8 sensors.   
     //Sensor[] Offsets into FULL image buffer!  xy stored in 4 bytes EPROM
 byte Sensor666[80*16*3];      //buffer to hold decoded latest 4x4 sensor images from frame fb (pitch=S666_row=12)
 byte Sensor_ref[80*4*4*3];    //array of 80 reference grabs (QVGA: 4x4x3RGB =48 bytes/sensor (total 3840 bytes 
 unsigned int SensorRefRatio[80*12];        //array of 3 x 4 quadrant colour ratios (r/g g/b b/r)x4
 int  Sen_Brightness_Ref[80];  //sum of pixels in all quadrant colours combined. max=3024 (4*4*3*63) for 666/pixel 
-byte SensorBlockStat[11]={0,0,0,0,0,0,0,0,0,0,0};//array of bits (8/block) each high if corresponding sensor tripped
+byte SensorBlockStat[11]={0,0,0,0,0,0,0,0,0,0,0};//array of bits (8/bank) each high if corresponding sensor tripped
           // If SensorBlockStat[b] ==0 then NO sensors in that block set are occupied (sensor[b0] is LSB in byte)
 unsigned int quad[5]={0,0,0,0,0};    //a temporary place to hold current sensor image quadrant brightness values 
 unsigned int bright;                 //  (4xquad[0-3] & total in quad[4] )
-int  brightSF=2;           //a scale factor to weight brightness variation when computing diff + bright*brightSF
-bool SensorStat[80];       //state occupied/unoccupied true/false  (can set using l## or o##.  They set inactive)
-bool SensorActive[80];     //if false (inactive) then don't update SensorStat[]  (can set active with a##)
+int  brightSF=BRIGHTSF;           //a scale factor to weight brightness variation when computing diff + bright*brightSF
+bool SensorStat[80];       //state occupied/unoccupied true/false  (can set using l%% or o%%.  They set inactive)
+bool SensorActive[80];     //if false (inactive) then don't update SensorStat[]  (can set active with a%%)
 byte SensorActiveBlk[10];  //each holds 8 sensor bits(8 bits/block) e.g. SensorActive[07-00] in SensorActiveBlk[0]
 int  SensorFilter[80];     //use to slow dropout by a cycle or two - needs to be unoccupied for more than 100mSec
 byte SensorTwin[80];       //if sensors in pairs use to identify secondary bsn.  (should save into eprom!)
@@ -197,7 +201,7 @@ byte mask[8]= {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80};
 int bsNo;               //parameter from text commands
 int bsn;                //general use
 int bsnUpdated=-1;
-int dbsNo=0;            //bsNo chosen with d## cmd.
+int dbsNo=0;            //bsNo chosen with d%% cmd.
 int i;                  //local index counter
 int j;                  //local index counter
 int b=0;                //local (block) variable
@@ -243,7 +247,7 @@ int  i2cDatai=0;        //array index
 
 int  threshold=45;      //difference (max Xratio+brightnessRatio) threshold for occupancy
 int  maxDiff=0;         //exact Xdiff match produces minimum maxDiff of 32 
-int  dFlag=0;           //flag set by d## to print out (while>0) diff and sample image for bsNo.
+int  dFlag=0;           //flag set by d%% to print out (while>0) diff and sample image for bsNo.
 int  dMaxDiff=0;        //saved maxDiff for 'd' cmd.
 int  dBright=0;         //saved bright for 'd' cmd.
 int  error=0;
@@ -254,7 +258,7 @@ unsigned int timerLoop=0;    //*loop time measurement
 unsigned int cFlag=0;        //*flag to set off full Sensor_ref[] refresh of all active sensors (triggers c##
 unsigned int cDelay=10000;  //*cDelay mSec after c## before updating active ref's
 
-int sScan=-1;           //flag set by s## to scan for, and set, new Sensor[sScan] position 
+int sScan=-1;           //flag set by s%% to scan for, and set, new Sensor[sScan] position 
 int sScanCount=3;       //get several frames before doing a scan to clear pipeline
 int refBrightness=0;    //reference brightness sum of 16 pixles of Sensor_ref[00]
 int refActual=0;        //actual Sensor[00] brightness on current frame
@@ -356,7 +360,7 @@ void setup() {
       pinMode(4,OUTPUT);digitalWrite(4,LOW);  //turn off flash LED
       pinMode(FLASHLED,OUTPUT);                             //to stop cycle flash set FLASHLED to another pin (33?)
       pinMode(BLK0LED, OUTPUT);digitalWrite(BLK0LED,HIGH);  //normal LED HIGH=off BUT (GPIO12 inverted. AVOID 12!)
-      pinMode(BLK1LED, OUTPUT);digitalWrite(BLK1LED,HIGH);  //set up Block occupied indicators (GPIO 2,14,4,33)
+      pinMode(BLK1LED, OUTPUT);digitalWrite(BLK1LED,HIGH);  //set up bank occupied indicators (GPIO 2,14,4,33)
       pinMode(BLK2LED, OUTPUT);digitalWrite(BLK2LED,HIGH);
       pinMode(BLK3LED, OUTPUT);digitalWrite(BLK3LED,HIGH);
       pinMode(pLED, OUTPUT);digitalWrite(pLED,HIGH);     
@@ -562,7 +566,7 @@ void loop() {
             boxSensors=false;    //don't do again - only on first 'y' command of series
           }     
           j = Xcolumn*2 + Yrow*320*2;                   //starting point in data   //then send an ASCII header
-/***/     prn('y');prn(Yrow);prn('x');prn(Xcolumn);prn('z');prn(Zlength);AS.println(';');  //faster than printf()
+/***/     Spr('y');Spr(Yrow);Spr('x');Spr(Xcolumn);Spr('z');Spr(Zlength);AS.println(';');  //faster than printf()
           Yheader[1]=byte(Yrow); Yheader[3]=byte(Xcolumn/2); Yheader[5]=byte(Zlength/2);
 uint32_t  Ycksum=0;              //Calculate checksum
           for (i=0;i<6;i++) Ycksum += int(Yheader[i]);  //does not include chsum or ':' in summation
@@ -604,7 +608,7 @@ uint32_t  Ycksum=0;              //Calculate checksum
                   sScan,sScan>>3,sScan&7,int(bright_spot/pitch),int(bright_spot%pitch)/2,bright_spot);
           printf(" YOU MUST DO an r%d%d TO RECORD NEW IMAGE REFERENCE DATA *AFTER* removing brightspot and \
 restoring light level.\n",sScan/8,sScan%8);
-          printf(" Press Enter for fresh frames (DO NOT DO r## here)\n");
+          printf(" Press Enter for fresh frames (DO NOT DO r%% here)\n");
           sScan=-1; // clear request.  //NOTE: printed pixel pos'n is the bright_spot NOT the Sensor corner pos'n 
           wait();                      //  (sensor corner reduced by 2*pitch+4)
         }
@@ -685,12 +689,14 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
     // sync with 50Hz (10mSec half cycle) using the modulus operator. If 60Hz wait 25mSec? (3 half cycles)
     // this is based on the premise that the mains frequency is very accurate, stable and doesn't drift at all! 
  
-      while((millis()%SUPPLY)!=0){}  //to reduce potential for jitter, wait until modulus!=9
-      while((millis()%SUPPLY)==0){}  //using millis() could introduce jitter unless catch TRANSITION 0 to 1  
+      while((millis()%SUPPLY)!=0){}  //to reduce potential for jitter
+      while((millis()%SUPPLY)==0){}  //using millis() could introduce jitter unless catch TRANSITION 0 to 1 
+      releaseTime=micros()+CYCLETIMECTR; //start a cycle time counter.  Will overflow after 71 minutes -> short cycle 
  /***/ IFT timer=micros();  
-      esp_camera_fb_return(fb);           //release jpg camera image frame buffer
+ 
+      esp_camera_fb_return(fb);         //release jpg camera image frame buffer - starts new frame capture? 
          //sensor images now in 3 byte format in array Sensor666[] 
-     releaseTime=micros()+93000;    //start a cycle time counter.  Will overflow after 71 minutes -> short cycle
+
 /***/ IFT{ AS.print("50Hz fb return(uS) "); AS.println(timer);}
      
 // ****IF CALLED FOR BY c####, OR STARTUP(), DO A FULL REFERENCE UPDATE FOR ALL ACTIVE SENSORS
@@ -762,7 +768,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
         printf("Diff: bsNo %d/%d diff %d bright %d diff+bright %d\n",dbsNo>>3,dbsNo&7,dMaxDiff,dBright,dMaxDiff+dBright);
         // also need to send something to i2c - do this in i2cRequest() if last i2cReceive was 'd' 
         dFlag-=1;          //decrement towards -1 
-        if(dFlag>=0){      //d##n sets dFlag so can output debug sample images for bsNo '##' on each of 'n' loops     
+        if(dFlag>=0){      //d%%n sets dFlag so can output debug sample images for bsNo '%%' on each of 'n' loops     
           write_img_sample(Sensor666,S666_row,long(dbsNo*48),24); //write for visual check what is being compared.
           wait();          //give user chance to read          
         }
@@ -824,13 +830,13 @@ int b=0;        //local (block) variable
 int c, i, j;    //j: sensor index
 int bsn; 
 /***/ IFI2C for(i=0;i<12;i++) AS.print(char(cmdString[i]));
-    if(cmdString[1]==' ') for(i=1;i<64;i++) cmdString[i]=cmdString[i+1];   
+    if(cmdString[1]==' ') for(i=1;i<62;i++) cmdString[i]=cmdString[i+1];   
     switch(cmdString[0]) {  
-      case 'a':{      //a##;  Activate Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
+      case 'a':{      //a%%;  Activate Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
         bsn = get_bsNo(cmdString); absNo1=cmdString[1]; absNo2=cmdString[2];    //save bsNo digits 
 
         if(cmdString[3]==','){
-         if(bsn<0) { printf("(a##,rrr,xxx)sets new coordinates for Sensor##\n"); break; }      //invalid bsNo
+         if(bsn<0) { printf("(a%%,rrr,xxx)sets new coordinates for Sensor%%\n"); break; }      //invalid bsNo
     int  rowVal=int(get_number(&cmdString[3]));
          if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
         else {
@@ -841,15 +847,15 @@ int bsn;
           if(xVal<0 || xVal>319) printf("invalid xValue\n");
           else{ 
             Sensor[bsn]=pitch*rowVal + 2*xVal; 
-            printf("(a##,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
+            printf("(a%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
             aRefCtr=4;        //get # fresh frames then take ref for sensor[aRef]
           }
         }
         wait();
       }
       
-        if (bsn>=0) { printf("(a##) Activate: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
- //         printf("PLEASE DO AN r## AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
+        if (bsn>=0) { printf("(a%%) Activate: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
+ //         printf("PLEASE DO AN r%% AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
          
           SensorActive[bsn]=true;              //set active and grab new ref
           SensorActiveBlk[bsn>>3] |= mask[bsn&0x07];
@@ -858,18 +864,18 @@ int bsn;
 /***/     printf("updated Sensor_ref[] HEX bytes(0-5)(BGRBGR): %x %x %x %x %x %x \n",Sensor_ref[bsn*S666_pitch],Sensor_ref[bsn*S666_pitch+1],Sensor_ref[bsn*S666_pitch+2],Sensor_ref[bsn*S666_pitch+3],Sensor_ref[bsn*S666_pitch+4],Sensor_ref[bsn*S666_pitch+5]);    
         } break;
       }     
-      case 'b':{      //b$;  Block status byte output to host on USB (& i2c)  //b$% use % to change brightSF from 1 to 3     
-        if (!isDigit(cmdString[1])) {AS.print("(b$%) block/bright parameters not found - brightSF(%) currently = ");AS.print(brightSF);AS.print(" \n");
+      case 'b':{      //b$;  Block status byte output to host on USB (& i2c)  //b$# use # to change brightSF from 1 to 4     
+        if (!isDigit(cmdString[1])) {AS.print("(b$#) bank/bright parameters not found - brightSF(#): ");AS.print(brightSF);AS.print(" \n");
  //         for(int xx=26;xx<31;xx++){AS.print(xx); AS.print(char(xx));}
         } 
         else {
           if (isDigit(cmdString[2])){           //if b$%; use % to change brightSF from 1 to 3      
             brightSF=cmdString[2]-0x30;
-            AS.print("(b#%) changing brightSF sensitivity to "); AS.print(brightSF); 
+            AS.print("(b$#) changing brightSF sensitivity to "); AS.print(brightSF); 
           }  
           b = cmdString[1]-0x30;               //ignore any further text after b$
           if(!newi2cCmd){
-            AS.print("\n(b$%)Block: ");AS.print(b);AS.print(" occupancy status byte: 0x");AS.print(SensorBlockStat[b],HEX);AS.print(" (sensors 7-0) ");
+            AS.print("\n(b$#)bank: ");AS.print(b);AS.print(" occupancy status byte: 0x");AS.print(SensorBlockStat[b],HEX);AS.print(" (sensors 7-0) ");
             for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' ');
           }         
           else IFI2C {for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' '); }        
@@ -918,19 +924,20 @@ int bsn;
         stdCtimer=millis()+10000;        //start a timer - wait 10sec for adjustments to settle automatically then turn off AGC say 
         break;              //leaves flags set for main loop() to calibrate from fresh images.        
       }
-      case 'd':{      //d##n; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
+      case 'd':{      //d%%#; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
         dFlag=0;      //set a (+ve) flag for loop() to print out data after it gets a fresh image repeating if desired.
         if(isDigit(cmdString[3])) dFlag=int(get_number(&cmdString[2]));  //set repeat count up to 9999            
+        AS.print("(d%%#) ");
         dbsNo = get_bsNo(cmdString);
         if (dbsNo>=0) {              
-          printf("Difference: Show diff counts for Sensor[0%o] %d consecutive images (remember pipelining!)\n",dbsNo,dFlag);
+          printf("Difference: diff score for Sensor[0%o], use %d consecutive images (remember pipelining!)\n",dbsNo,dFlag);
           printf("will print data AFTER new line - follow with 'w' command to pause to read\n");
         } else dFlag=-1;
         wait();      
         break;        //leaves flag for loop() to complete print output.       
       } 
       case 'e':{     //e;  EPROM burn any changes to Sensor[] & some other parameters
-        printf("EPROM: Save latest threshold (%d), min2flip (%d), nLED (%d), maxSensors (%d), Sensor[] & SensorTwin[] to EPROM\n",threshold,min2flip,nLED,maxSensors);
+        printf("(e)EPROM: Save latest threshold (%d), min2flip (%d), nLED (%d), maxSensors (%d), Sensor[] & SensorTwin[] to EPROM\n",threshold,min2flip,nLED,maxSensors);
         EEPROM.write(EPnLED,byte(nLED));
         EEPROM.write(EPthreshold,byte(threshold));
         EEPROM.write(EPmin2flip,byte(min2flip));
@@ -947,9 +954,10 @@ int bsn;
         wait();
         break;            
       }  
-      case 'f':{      //f##;  Frame image of bsNo sensor output to USB (if sensor[bsNo] undefined, will get no data)
+      case 'f':{      //f%%;  Frame image of bsNo sensor output to USB (if sensor[bsNo] undefined, will get no data)
+        AS.print("(f%%) ");
         bsn = get_bsNo(cmdString);
-        printf("(f##) Frame: Print fb ref & newest sample for S0%o\n",bsn);
+        printf("Frame: Print fb ref & newest sample for S0%o\n",bsn);
         if (bsn>=0) write_img_sample(Sensor666,S666_row,bsn*48,24);  //write current image of sensor[bsn] ref & new data         
         wait();
         break;
@@ -1001,18 +1009,18 @@ int bsn;
         wait();
         break; 
       }
-      case 'i':{      //i##;  Individual sensor status byte (1/0) sent to USB (& i2c)
+      case 'i':{      //i%%;  Individual sensor status byte (1/0) sent to USB (& i2c)
         bsn = get_bsNo(cmdString);     
         if (bsn<0) {
-          printf("(i##) Individual sensor unspecified\n"); 
+          printf("(i%%) No Individual sensor specified\n"); 
           break;
         }
         if(cmdString[3]==',') {               //define twin
           j=get_bsNo(&cmdString[3]);
-          SensorTwin[bsn]=j;         //i##,$$
+          SensorTwin[bsn]=j;         //i%%,$$
           printf("Setting SensorTwin[0%o",bsn);printf("] to sensor[0%o}\n",j);
         }
-        printf("(i##,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
+        printf("(i%%,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
         if (SensorStat[bsn])printf("true/OCCUPIED    ");             
         else                 printf("false/unoccupied ");
         printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
@@ -1023,9 +1031,9 @@ int bsn;
         wait();                     
         break;          
       }
-      case 'k':{      //k##,rrr,xxx  set coordinates for Sensor[##] = pitch*r+2*x (for RGB565)
+      case 'k':{      //k%%,rrr,xxx  set coordinates for Sensor[%%] = pitch*r+2*x (for RGB565)
         bsn = get_bsNo(cmdString);
-        if(bsn<0) { printf("(k##,rrr,xxx)sets new coordinates for Sensor##\n"); break; }      //invalid bsNo
+        if(bsn<0) { printf("(k%%,rrr,xxx)sets new coordinates for Sensor%%\n"); break; }      //invalid bsNo
    int  rowVal=int(get_number(&cmdString[3]));
         if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
         else {
@@ -1036,30 +1044,30 @@ int bsn;
           if(xVal<0 || xVal>319) printf("invalid xValue\n");
           else{ 
             Sensor[bsn]=pitch*rowVal + 2*xVal; 
-            printf("(k##,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
+            printf("(k%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
           }
         }
         wait();
         break;       
       }     
-      case 'l':{      //l##;  (lima) set bsNo OCCUPIED(1) & INACTIVE
+      case 'l':{      //l%%;  (lima) set bsNo OCCUPIED(1) & INACTIVE
         bsn = get_bsNo(cmdString);    
-        if(bsn>=0){ printf("(l##)(Lima): Sensor %d/%d (bsn %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(l%%)(Lima): Sensor %d/%d (bsn %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=true; 
           SensorBlockStat[bsn>>3] |=  mask[bsn&7]; 
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];           
-        }else printf("(l##)(Lima): Sensor ## state set = 1, OCCUPIED & disabled\n");
+        }else printf("(l%%)(Lima): Sensor %% state set = 1, OCCUPIED & disabled\n");
         break;
       }
-      case 'o':{      //o##;  (oscar) set bsNo to UN-OCCUPIED(0) & INACTIVE(0)
+      case 'o':{      //o%%;  (oscar) set bsNo to UN-OCCUPIED(0) & INACTIVE(0)
         bsn = get_bsNo(cmdString);     
-        if(bsn>=0){ printf("(o##)(Oscar)Sensor %d/%d (bsn %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(o%%)(Oscar)Sensor %d/%d (bsn %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=false; 
           SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07]; 
-        }else  printf("(o##)(Oscar)Sensor[##] set = 0, UN-OCCUPIED & disabled\n");
+        }else  printf("(o%%)(Oscar)Sensor[%%] set = 0, UN-OCCUPIED & disabled\n");
         break;             
       }
       case 'm':{      //m$;    Minimum sequential frames to trigger Occupied status (default 2)
@@ -1081,18 +1089,18 @@ int bsn;
           nLED = cmdString[1]-0x30;               
           digitalWrite(pLED,HIGH);          //initial setting (LED off) in case it never gets updated elsewhere.
         }
-        printf("(n##) Block Number: %d assigned to programmable status LED\n",nLED); 
+        printf("(n$) bank Number: %d assigned to programmable status LED\n",nLED); 
         wait();             
         break;  
       }
-      case 'p':{      //p#;  Print table of Sensor[] Position Pointers (Blocks 0 to # only)
+      case 'p':{      //p#;  Print table of Sensor[] Position Pointers (banks 0 to # only)
         i=0; c=0;          
         if(!isDigit(cmdString[1])) b=1;  //p defaults to p1;
         else {
           b=cmdString[1]-0x30;
           if(isDigit(cmdString[2])) { i=b; c=cmdString[2]&0x07; }          
         }
-        printf("(p##) Position Pointers: TL corners for DEFINED Sensors to block %d\n",b);
+        printf("(p$) Position Pointers: TL corners for DEFINED Sensors to bank %d\n",b);
         for (i=i;i<=b;i++) {
             printf("Block %d;", i);
             for (int j=c;j<=7;j++)
@@ -1107,7 +1115,7 @@ int bsn;
         else b=cmdString[1]-0x30;
         j=0;
         if(b==9) j=9;      //if "q9" send all blocks in reverse order (i.e. 9 first) else just do requested block       
-        AS.print("(q$) Query: block ");AS.print(b);AS.print(" sensors (7-0) in enabled state: ");
+        AS.print("(q$) Query: bank ");AS.print(b);AS.print(" sensors (7-0) in enabled state: ");
         for (j=j;j>=0;j--){
             for (i=7;i>=0;i--)
               if(!SensorActive[b*8+i]) AS.print('0');
@@ -1119,8 +1127,8 @@ int bsn;
         wait();
         break; 
       }
-      case 'r':{      //r##;  Refresh bsNo Reference in Sensor_ref[bsNo], Activate and may display img data
-        printf("(r##) refresh Reference for sensor[##]. (default r00 for all) (MUST BE UNOCCUPIED!)\n");
+      case 'r':{      //r%%;  Refresh bsNo Reference in Sensor_ref[bsNo], Activate and may display img data
+        printf("(r%%) refresh Reference for sensor[%%]. (default r00 for all) (MUST BE UNOCCUPIED!)\n");
         bsn=00;      //r defaults to r00;
         if (isDigit(cmdString[1])) bsn = get_bsNo(cmdString);
         if(bsn<0) break;       //invalid bsNo       
@@ -1140,21 +1148,21 @@ int bsn;
         } 
         break;
       } 
-      case 's':{      //s##;  Scan for bright spot and set new xy for Sensor[bsNo]
+      case 's':{      //s%%;  Scan for bright spot and set new xy for Sensor[bsNo]
         bsn = get_bsNo(cmdString);;       //s0# or s%#; accepted as Sensor number (bsn=8*%+#). Second digit should not be >7
-        if (bsn<0) { AS.print("Scan: illegal bsNo\n"); break;  }               //do nothing if illegal bsNo.      
+        if (bsn<0) { AS.print("(S%%)Scan: illegal bsNo\n"); break;  }               //do nothing if illegal bsNo.      
         sScan=bsn;             //tell "loop()" to scan with fresh image for the bsNo in sScan. (0-79)
-        sScanCount=3;           //request 3 fresh frames first to flush pipeline
+        sScanCount=3;          //request 3 fresh frames first to flush pipeline
         break;
       }     
-      case 't':{      //t_:  Set threshold 1 to 250 for sensor "trip", send value to USB (& i2c)
+      case 't':{      //t_:  Set threshold 31 to 250 for sensor "trip", send value to USB (& i2c)
         error = get_number(cmdString);  //no number returns 0
         if(error > 30) threshold=error;  // will be permanent only use 'e' command (along with sensor changes and nLED)
         else if(error==1) {
               scroll=!scroll;  //use to hide scrolling status data.
               if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
         }
-        printf("(t##) Threshold: trip set to %d\n", threshold);
+        printf("(t##) Threshold: trip set to %d\n(t1)can toggle scroll data ON/OFF\n", threshold);
         if(cmdString[3]==',') { 
           error = get_number(&cmdString[3]);  //get second parameter
           if(error > 0) minSensors=error-1;   // can't set minSensors to 0 otherwise
@@ -1163,12 +1171,12 @@ int bsn;
         wait();        
         break;
       }
-      case 'u':{      //u##; Undefine Sensor[##] by setting pointer = 0 
+      case 'u':{      //u%%; Undefine Sensor[%%] by setting pointer = 0 
         if(isDigit(cmdString[1])){       
           bsn=int(cmdString[1]-48);    
           if(isDigit(cmdString[2])&&(cmdString[2]<=0x37)){      
             bsn=bsn*8+int(cmdString[2])-48;  //2nd digit <8
-            printf("\n(u##) Undefine: Undefining %d/%d  bsn %d\n",bsn/8,bsn&0x07,bsn);
+            printf("\n(u%%) Undefine: Undefining %d/%d  bsn %d\n",bsn/8,bsn&0x07,bsn);
             Sensor[bsn]=0L;
             SensorActive[bsn]=false;  
             SensorActiveBlk[bsn>>3] &= ~mask[bsn&7];    
@@ -1182,10 +1190,10 @@ int bsn;
         wait();            
         break;
       }
-      case 'F':       //F;  Finish = Reset.  Added so Bluetooth phone can send a reset ('R' not on keyboard)
+      case 'F':       //F;  Finish = Reset.  Added so Bluetooth phone & CS can send a reset ('R' not on remote)
       case 'R': {     //R;  Reset command reboots the CAM in Sensor mode and restores parameters from EPROM
         if(cmdString[0]!='F'){                          //'F' forces Restart immediately (for EX-CS)
-          printf("Reset: Waiting for new line to trigger reset in Sensor Mode - 'aw' will abort 'R' and wait\n");
+          printf("(R)Reset: Waiting for 'Enter' to trigger reset in Sensor Mode - 'aw' will abort 'R' and wait\n");
           while (!AS.available() && !newi2cCmd) delay(10);  //stops looping indefinitely until input a newline (\n)
           cmdChar=AS.read();       
           if(cmdChar != '\n'){AS.println("\nAborting Reset"); break;}  //any character can abort except LF
@@ -1197,8 +1205,8 @@ int bsn;
         if(cmdString[1]=='e') {printf("CAM software version (BCDver): %d\n",BCDver); wait(); break;}
         wifi=1;
         if(isDigit(cmdString[1])) wifi=cmdString[1]-0x30;  //set choice of wifi connections (1-9)       
-        printf("Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
-        printf("Waiting for new line to trigger reset\n");
+        printf("(v [2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
+        printf("Waiting - press 'Enter' to trigger reset\n");
         while (!Serial.available() && !newi2cCmd) delay(10);  //stops looping indefinitely until input a newline (\n)
           //need to set EPROM flag in eprom
           // should we do another EEPROM.begin in case EEPROM.end already done??
@@ -1258,9 +1266,8 @@ int bsn;
         printf("(@##) 'Occupied' indicator in tabulation set to ASCII 0x%x\n",OCc);
         break; 
       }
-      case '%':       //%;  print out "noise" histogram and reset it
-      case '&':{      //new. supersedes '%'
-    int hsum=0;
+      case '&':{      //statistics
+		int hsum=0;
         printf("(&) print Histogram of Hi noise trips since last '&'.  i.e. %d loops.\nbsNo\t",HistoLoops);
         for (bsn=0;bsn<maxSensors;bsn++) if(SensorActive[bsn]) printf("%o\t",bsn);
         for (i=1;i<5;i++) { 
@@ -1275,7 +1282,7 @@ int bsn;
         for (bsn=0; bsn<80;bsn++) SensorHiCount[bsn]=0;       
         HistoLoops=0;
         wait(); 
-        break;
+        break;	    
       }
     }       //end switch()
     newi2cCmd=false;        // be aware that this could clobber a fast follow up i2c command already received. 
@@ -1563,7 +1570,7 @@ int j;
 // GET bsNo FROM cmdString[] CHECKING VALIDITY
 int get_bsNo(char *cmdString){        
         //cmdString looks like "c##xxx\n" - only ## used
-        //returns integer = # * 8 + #     //(treats ## like octal)
+        //returns integer = # * 8 + #     //(treats %% like octal)
 int bsn;
     if(isDigit(cmdString[1])) {bsn=int(cmdString[1]-0x30);     //return -1 if not valid 2 digit no. 
         if(isDigit(cmdString[2])&&(cmdString[2]<=0x37)) {      //check cmdString[2] <= 7
@@ -1736,7 +1743,7 @@ bool processDiff(int bsn){
 //  FUNCTION TO ACCEPT I2C COMMANDS/DATA (AS SLAVE)
 void i2cReceive(int len){                      //function to handle i2c received (interrupt?)
 uint8_t Nbytes=32; 
-byte i2cIncoming[13];         //use to hold translated command. longest: k,##,123,234 12 char's + \n?
+byte i2cIncoming[13];         //use to hold translated command. longest: k%%,123,234 12 char's + \n?
    int i=0;
    int j=0;
    int bsn=0;
@@ -1841,7 +1848,7 @@ void i2cRequest(){                             //function to handle i2c request 
         case 'm':           //m$,## //set min2flip and maxSensors
           numWritten=MyWire.write(dataPkt,7);
           break;         
-        case 'i':            //i##: //write state of sensor #/#    
+        case 'i':            //i%%: //write state of sensor #/#    
           numWritten=MyWire.write(dataPkt,9);
           break; 
         case 't':            //t$$$       //write old threshold value, & set new
@@ -1938,7 +1945,7 @@ const int numDigBytes=(NUMdigPins+7)>>3;
         
       case EXIODPUP:                  //EXIODPUP(0xE2) pin pullup     USE (1) for 'a' or (0) 'r'  
         datapk[0]=EXIORDY;        
-//        MyWire.write(datapk,1);      //preload onRequest buffer      // #######################
+//        MyWire.write(datapk,1);      //preload onRequest buffer      // ######
  /*       if (i2cCmdBuf[2]==1) i2cCmdBuf[0]='a';
         else i2cCmdBuf[0]='r';     
         i2cCmdBuf[2]=0x30+(i2cCmdBuf[1]&&0x07);    //sensor
@@ -2093,7 +2100,7 @@ void i2cExpanderRequest(byte cmd,byte *datapk){
        
 //  FUNCTION TO PREPARE AN I2C DATA PACKET (AS SLAVE)
 int i2cPrepare(char cmd, char block, char *datapk) {    //function to prepare an i2c packet for "onRequest"
-  //cmd: 'p' or 'b'   block: (0-9)  datapk[32] byte buffer for pkt
+  //cmd: 'p' or 'b'   bank: (0-9)  datapk[32] byte buffer for pkt
 byte  i2cparity;
 int   blk=0;
 int   i=1; 
@@ -2103,7 +2110,7 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
       datapk[0] = cmd;                  //MyWire.write('b');        //write "header"
       i2cparity = cmd;                  //initialise  
       switch (cmd){
-        case 'b':{              //b$:   //write descending blocks into packet (1 to 10 bytes) 
+        case 'b':{              //b$:   //write descending banks into packet (1 to 10 bytes) 
          if(!isDigit(block)) block='9'; //default "b " to "b9"
          block=block-0x30;         
           for (blk=block;blk>=0;blk--) { 
@@ -2114,7 +2121,7 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
  /***/    IFI2C { for (blk=0;blk<(block+3);blk++) {AS.print(datapk[blk],HEX);AS.print(" ");} AS.println(" ");}
           return block+3;             //return byte count
         }
-        case 'i':{            //i##:  //write state of sensor #/#   
+        case 'i':{            //i%%:  //write state of sensor #/#   
           bsn=(byte(block&0x7F)-0x30);             //get bsn     0x30-0x39 looks like binary bsn +0x30 ('0' to 177)
           if(block<0x30)bsn=00;       //assume block has been loaded with b*8+s
                 //if 'i' from CS driver, it must output Ascii bsNo. even though it gets an id format.
@@ -2317,7 +2324,7 @@ void av2frames(int bsn){          //byte RingBuff[2*80*16*3];
 //FUNCTION TO SUSPEND LOOPING
 void wait(){
 //stops looping indefinitely until input a newline (\n) from USB or i2c  
-       printf("Waiting for new line\n");
+       printf("Waiting - press 'Enter' to continue\n");
        while (!AS.available() && !newi2cCmd) delay(100); 
 }  // *****************************
 
