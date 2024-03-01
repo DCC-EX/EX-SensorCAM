@@ -833,9 +833,9 @@ int bsn;
 /***/ IFI2C for(i=0;i<12;i++) AS.print(char(cmdString[i]));
     if(cmdString[1]==' ') for(i=1;i<62;i++) cmdString[i]=cmdString[i+1];   
     switch(cmdString[0]) {  
-      case 'a':{      //a%%;  Activate Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
+      case 'a':{      //a%%;  enAble Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
         bsn = get_bsNo(cmdString); absNo1=cmdString[1]; absNo2=cmdString[2];    //save bsNo digits 
-        if(bsn<0) { printf("(a%%%%,rrr,xxx)enAble Sensor(%%%%)[& sets new coordinates for it]\n"); break; }
+        if(bsn<0) { printf("(a%%%%,rrr,xxx) enAble Sensor(%%%%)[& sets new coordinates for it]\n"); break; }
         if(cmdString[3]==','){
     int  rowVal=int(get_number(&cmdString[3]));
          if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
@@ -852,9 +852,8 @@ int bsn;
           }
         }
         wait();
-      }
-      
-        if (bsn>=0) { printf("(a%%%%) Activate: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
+      }      
+        if (bsn>=0) { printf("(a%%%%) enAble: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
  //         printf("PLEASE DO AN r%%%% AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
          
           SensorActive[bsn]=true;              //set active and grab new ref
@@ -865,17 +864,17 @@ int bsn;
         } break;
       }     
       case 'b':{      //b$;  Block status byte output to host on USB (& i2c)  //b$# use # to change brightSF from 1 to 4     
-        if (!isDigit(cmdString[1])) {AS.print("(b$#) Bank/Bright: parameters not found - brightSF(#): ");AS.print(brightSF);AS.print(" \n");
+        if (!isDigit(cmdString[1])) {AS.print("(b$#) Bank/Bright: parameters not found - (#)brightSF: ");AS.println(brightSF);
  //         for(int xx=26;xx<31;xx++){AS.print(xx); AS.print(char(xx));}
         } 
         else {
           if (isDigit(cmdString[2])){           //if b$%; use % to change brightSF from 1 to 3      
             brightSF=cmdString[2]-0x30;
-            AS.print("(b$#) changing brightSF sensitivity to "); AS.print(brightSF); 
+            AS.print("(b$#) changing brightSF sensitivity to "); AS.println(brightSF); 
           }  
           b = cmdString[1]-0x30;               //ignore any further text after b$
           if(!newi2cCmd){
-            AS.print("\n(b$#)bank: ");AS.print(b);AS.print(" occupancy status byte: 0x");AS.print(SensorBlockStat[b],HEX);AS.print(" (sensors 7-0) ");
+            AS.print("(b$#)bank: ");AS.print(b);AS.print(" occupancy status byte: 0x");AS.print(SensorBlockStat[b],HEX);AS.print(" (sensors 7-0) ");
             for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' ');
           }         
           else IFI2C {for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' '); }        
@@ -992,7 +991,7 @@ int bsn;
               break;
             case's': {
               if (isDigit(cmdString[2])){       //set a maxSensors bsn limit on sensor state printout from 4min to 36max(044) (digit[2]x4)         
-                maxSensors=((cmdString[2]-0x30)*4);printf("Setting maxSensors to (#x4)= 0%o\n",maxSensors);} 
+                maxSensors=((cmdString[2]-0x30)*4);printf("(hs#) Setting maxSensors to (#x4)= 0%o\n",maxSensors);} 
               }  
               break;
             default: 
@@ -1051,24 +1050,24 @@ int bsn;
         wait();
         break;       
       }     
-      case 'l':{      //l%%;  (lima) l: set bsNo OCCUPIED(1) & INACTIVE
+      case 'l':{      //l%%;  (lima) set1: set bsNo OCCUPIED(1) & INACTIVE
         bsn = get_bsNo(cmdString);    
-        if(bsn>=0){ printf("(l%%%%)(Lima): Sensor %d/%d (bsn %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn %d.) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=true; 
           SensorBlockStat[bsn>>3] |=  mask[bsn&7]; 
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];           
-        }else printf("(l%%%%)(Lima): Sensor %%%% state set = 1, OCCUPIED & disabled\n");
+        }else printf("(l%%%%)(Lima) set1: Sensor %%%% state set = 1, OCCUPIED & disabled\n");
         break;
       }
-      case 'o':{      //o%%;  (oscar) Zero: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
+      case 'o':{      //o%%;  (oscar) set0: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
         bsn = get_bsNo(cmdString);     
-        if(bsn>=0){ printf("(o%%%%)(Oscar)zerO: Sensor %d/%d (bsn %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn %d.) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=false; 
           SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07]; 
-        }else  printf("(o%%%%)(Oscar)Sensor[%%%%] set = 0, UN-OCCUPIED & disabled\n");
+        }else  printf("(o%%%%)(Oscar)set0: Sensor[%%%%] set = 0, UN-OCCUPIED & disabled\n");
         break;             
       }
       case 'm':{      //m$;    Minimum: sequential frames to trigger Occupied status (default 2)
@@ -1081,7 +1080,7 @@ int bsn;
            if (isDigit(cmdString[3])) maxSensors=get_number(&cmdString[2]);  //should limit to 80!
            if (maxSensors > 80) maxSensors = 80;        
         }
-        printf("(m$,##) Minimum: $ frames min2flip OCCUPIED set to %d, minSensors 0%o maxSensors 0%o TwoImage_MaxBS: 0%o\n",min2flip,minSensors,maxSensors,TWOIMAGE_MAXBS);  
+        printf("(m$,##) MinMax: $ min2flip frames OCCUPIED set to %d, maxSensors: 0%o (minSensors: 0%o TwoImage_MaxBS: 0%o)\n",min2flip,maxSensors,minSensors,TWOIMAGE_MAXBS);  
         wait();
         break;
       }
@@ -1163,7 +1162,7 @@ int bsn;
               scroll=!scroll;  //use to hide scrolling status data.
               if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
         }
-        printf("(t##) Threshold: trip set to %d\n(t1)can toggle scroll data ON/OFF\n", threshold);
+        printf("(t##) Threshold: trip set to %d\n(t1)will toggle scroll data ON/OFF\n", threshold);
         if(cmdString[3]==',') { 
           error = get_number(&cmdString[3]);  //get second parameter
           if(error > 0) minSensors=error-1;   // can't set minSensors to 0 otherwise
