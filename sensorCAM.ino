@@ -1,6 +1,7 @@
 //sensorCAM Alpha release                                                                                 limit >|
 
-#define BCDver 161
+#define BCDver 162
+    //v162 refined command error messages and prompts
     //v161 some code housekeeping and modified use of SUPPLY (50/60Hz) & CYCLETIMECTR & BRIGHTSF
     //v160 added scroll toggle control to 't1/t 1'.  Limit threshold >30 (t31 makes all occupied) <multiple rows>
     //v159 added 'F' to cmds[] from EX-CS and changed 'F' to Force Reset without confirmation \n          
@@ -608,7 +609,7 @@ uint32_t  Ycksum=0;              //Calculate checksum
                   sScan,sScan>>3,sScan&7,int(bright_spot/pitch),int(bright_spot%pitch)/2,bright_spot);
           printf(" YOU MUST DO an r%d%d TO RECORD NEW IMAGE REFERENCE DATA *AFTER* removing brightspot and \
 restoring light level.\n",sScan/8,sScan%8);
-          printf(" Press Enter for fresh frames (DO NOT DO r%% here)\n");
+          printf(" Press Enter for fresh frames (DO NOT DO r%%%% here)\n");
           sScan=-1; // clear request.  //NOTE: printed pixel pos'n is the bright_spot NOT the Sensor corner pos'n 
           wait();                      //  (sensor corner reduced by 2*pitch+4)
         }
@@ -834,9 +835,8 @@ int bsn;
     switch(cmdString[0]) {  
       case 'a':{      //a%%;  Activate Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
         bsn = get_bsNo(cmdString); absNo1=cmdString[1]; absNo2=cmdString[2];    //save bsNo digits 
-
+        if(bsn<0) { printf("(a%%%%,rrr,xxx)enAble Sensor(%%%%)[& sets new coordinates for it]\n"); break; }
         if(cmdString[3]==','){
-         if(bsn<0) { printf("(a%%,rrr,xxx)sets new coordinates for Sensor%%\n"); break; }      //invalid bsNo
     int  rowVal=int(get_number(&cmdString[3]));
          if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
         else {
@@ -847,15 +847,15 @@ int bsn;
           if(xVal<0 || xVal>319) printf("invalid xValue\n");
           else{ 
             Sensor[bsn]=pitch*rowVal + 2*xVal; 
-            printf("(a%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
+            printf("(a%%%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
             aRefCtr=4;        //get # fresh frames then take ref for sensor[aRef]
           }
         }
         wait();
       }
       
-        if (bsn>=0) { printf("(a%%) Activate: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
- //         printf("PLEASE DO AN r%% AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
+        if (bsn>=0) { printf("(a%%%%) Activate: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
+ //         printf("PLEASE DO AN r%%%% AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
          
           SensorActive[bsn]=true;              //set active and grab new ref
           SensorActiveBlk[bsn>>3] |= mask[bsn&0x07];
@@ -865,7 +865,7 @@ int bsn;
         } break;
       }     
       case 'b':{      //b$;  Block status byte output to host on USB (& i2c)  //b$# use # to change brightSF from 1 to 4     
-        if (!isDigit(cmdString[1])) {AS.print("(b$#) bank/bright parameters not found - brightSF(#): ");AS.print(brightSF);AS.print(" \n");
+        if (!isDigit(cmdString[1])) {AS.print("(b$#) Bank/Bright: parameters not found - brightSF(#): ");AS.print(brightSF);AS.print(" \n");
  //         for(int xx=26;xx<31;xx++){AS.print(xx); AS.print(char(xx));}
         } 
         else {
@@ -881,16 +881,17 @@ int bsn;
           else IFI2C {for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' '); }        
         } 
         break;  
-      }               //c$$$$%%%%%%; set $=1 to leave AWB AEC AGC & CB respectively. 
+      }               //c$$$$#####; set $=1 to leave AWB AEC AGC & CB respectively. 
       case 'c':{      //c$$$$; Calibrate: turn on/off Auto adjustments for 10seconds and reload all references!
                       //6x % parameters are 1/0 for AWBg AEC AECd AEL AGC AGg respectively ( default to off(0) ) 
                       //full list: arguments for 'c' command; Bri Con Sat AWB  AWBg AEC AECd AEL AGC AGg (NO SPACES!)
+        printf("(c$$$####$##) caution recommended - USE CMD 'r00' after 15 seconds or just use 'j' ( $= _|-|0|1|2 )\n");  
         autoRefSuspended = true;                //Suspend auto refRefresh() during 'r'                    
         Bri=0; Con=1; Sat=2; AWB=1; AWBg=1; AEC=0; AECd=0; AEL=1; AGC=1; AGg=9;    //reset defaults
-   /*     if(cmdString[1]<0x20) printf("CALIBRATE CAM - syntax: c AWB AEC AGC CBar Bri Con Sat AGCgain AWBg    e.g. reset defaults: c01100129\n"); */
- //new  if(cmdString[1]<0x20) printf("CALIBRATE CAM - syntax: c Bri Con Sat AWB AWBg AEC AECd AEL AGC AGgain    e.g. reset defaults: c01100129\n");
+   /*     if(cmdString[1]<0x20) printf("CALIBRATE CAM - syntax: c AWB AEC AGC CBar Bri Con Sat AGCgain AWBg    e.g. reset defaults: c01200129\n"); */
+        if(cmdString[1]<0x20){ printf("Calibrate CAM - syntax: c Bri Con Sat AWB AWBg AEC AECd AEL AGC AGgain   e.g. reset defaults: c0121100119\n"); break;}
         cStr=" ";
-        if (isDigit(cmdString[1])) Bri=cmdString[1]-0x30;          //options: use 0,1,2,'5' for -1 and '6' for -2  
+        if (isDigit(cmdString[1])) Bri=cmdString[1]-0x30;          //options: use 0,1,2,'-' for -1 and '_' for -2  
         else {if (cmdString[1]=='-') Bri=-1; if (cmdString[1]=='_') Bri=-2;} 
         AS.print(" Bri=");AS.print(Bri); cStr=cStr+cmdString[1];                  
         if (isDigit(cmdString[2])) Con=cmdString[2]-0x30;
@@ -927,10 +928,10 @@ int bsn;
       case 'd':{      //d%%#; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
         dFlag=0;      //set a (+ve) flag for loop() to print out data after it gets a fresh image repeating if desired.
         if(isDigit(cmdString[3])) dFlag=int(get_number(&cmdString[2]));  //set repeat count up to 9999            
-        AS.print("(d%%#) ");
+        AS.print("(d%%#) Diff: ");
         dbsNo = get_bsNo(cmdString);
         if (dbsNo>=0) {              
-          printf("Difference: diff score for Sensor[0%o], use %d consecutive images (remember pipelining!)\n",dbsNo,dFlag);
+          printf(" difference score for Sensor[0%o], use %d consecutive images (remember pipelining!)\n",dbsNo,dFlag);
           printf("will print data AFTER new line - follow with 'w' command to pause to read\n");
         } else dFlag=-1;
         wait();      
@@ -954,7 +955,7 @@ int bsn;
         wait();
         break;            
       }  
-      case 'f':{      //f%%;  Frame image of bsNo sensor output to USB (if sensor[bsNo] undefined, will get no data)
+      case 'f':{      //f%%;  Frame: image of bsNo sensor output to USB (if sensor[bsNo] undefined, will get no data)
         AS.print("(f%%) ");
         bsn = get_bsNo(cmdString);
         printf("Frame: Print fb ref & newest sample for S0%o\n",bsn);
@@ -968,7 +969,7 @@ int bsn;
         break; 
       }
       case 'j':{        //j$#;  Set one camera parameter($) directly to digit(#)  (5=-1,6=-2)
-        AS.print("(j$#) adjust camera setting $ to # (NO auto new Ref's)\n");
+        AS.print("(j$#) adJust camera setting $ to # (NO auto new Ref's)\n");
         new_camera_set(cmdString[1],cmdString[2]);  //if invalid $, print list of valid parameters 
         getCAMstatus();   // display new settings, as for (g) cmd
         wait();
@@ -995,7 +996,7 @@ int bsn;
               }  
               break;
             default: 
-              printf("h- turns all off, h# turns on Debug#, hs# can also set maxSensors to 4x# i.e.4-36(044)\n");
+              printf("(h#) Help: h- turns all off, h# turns on Debug#, hs# can also set maxSensors to 4x# i.e.4-36(044)\n");
               printf("current help: ");     //if not h# or h-, print out current settings
               if(DEBUG[0]==1)printf("DE0(detail) ON; ");
               if(DEBUG[1]==1)printf("DB1(timing) ON; ");
@@ -1012,7 +1013,7 @@ int bsn;
       case 'i':{      //i%%;  Individual sensor status byte (1/0) sent to USB (& i2c)
         bsn = get_bsNo(cmdString);     
         if (bsn<0) {
-          printf("(i%%) No Individual sensor specified\n"); 
+          printf("(i%%%%) Info: No Individual sensor specified\n"); 
           break;
         }
         if(cmdString[3]==',') {               //define twin
@@ -1020,7 +1021,7 @@ int bsn;
           SensorTwin[bsn]=j;         //i%%,$$
           printf("Setting SensorTwin[0%o",bsn);printf("] to sensor[0%o}\n",j);
         }
-        printf("(i%%,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
+        printf("(i%%%%,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
         if (SensorStat[bsn])printf("true/OCCUPIED    ");             
         else                 printf("false/unoccupied ");
         printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
@@ -1033,7 +1034,7 @@ int bsn;
       }
       case 'k':{      //k%%,rrr,xxx  set coordinates for Sensor[%%] = pitch*r+2*x (for RGB565)
         bsn = get_bsNo(cmdString);
-        if(bsn<0) { printf("(k%%,rrr,xxx)sets new coordinates for Sensor%%\n"); break; }      //invalid bsNo
+        if(bsn<0) { printf("(k%%%%,rrr,xxx)Koordinates: setup for Sensor%%%%\n"); break; }      //invalid bsNo
    int  rowVal=int(get_number(&cmdString[3]));
         if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
         else {
@@ -1044,34 +1045,34 @@ int bsn;
           if(xVal<0 || xVal>319) printf("invalid xValue\n");
           else{ 
             Sensor[bsn]=pitch*rowVal + 2*xVal; 
-            printf("(k%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
+            printf("(k%%%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
           }
         }
         wait();
         break;       
       }     
-      case 'l':{      //l%%;  (lima) set bsNo OCCUPIED(1) & INACTIVE
+      case 'l':{      //l%%;  (lima) l: set bsNo OCCUPIED(1) & INACTIVE
         bsn = get_bsNo(cmdString);    
-        if(bsn>=0){ printf("(l%%)(Lima): Sensor %d/%d (bsn %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(l%%%%)(Lima): Sensor %d/%d (bsn %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=true; 
           SensorBlockStat[bsn>>3] |=  mask[bsn&7]; 
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];           
-        }else printf("(l%%)(Lima): Sensor %% state set = 1, OCCUPIED & disabled\n");
+        }else printf("(l%%%%)(Lima): Sensor %%%% state set = 1, OCCUPIED & disabled\n");
         break;
       }
-      case 'o':{      //o%%;  (oscar) set bsNo to UN-OCCUPIED(0) & INACTIVE(0)
+      case 'o':{      //o%%;  (oscar) Zero: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
         bsn = get_bsNo(cmdString);     
-        if(bsn>=0){ printf("(o%%)(Oscar)Sensor %d/%d (bsn %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(o%%%%)(Oscar)zerO: Sensor %d/%d (bsn %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=false; 
           SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07]; 
-        }else  printf("(o%%)(Oscar)Sensor[%%] set = 0, UN-OCCUPIED & disabled\n");
+        }else  printf("(o%%%%)(Oscar)Sensor[%%%%] set = 0, UN-OCCUPIED & disabled\n");
         break;             
       }
-      case 'm':{      //m$;    Minimum sequential frames to trigger Occupied status (default 2)
-                      //m$,##; Optional set max sensors to ## (decimal)
+      case 'm':{      //m$;    Minimum: sequential frames to trigger Occupied status (default 2)
+                      //m$,##; Optional set Max sensors to ## (decimal)
         if (isDigit(cmdString[1])) {   //default value for min2flip = 2
           b = cmdString[1]-0x30;               //ignore any further text after m# 
           if(b>0) min2flip = b;                //only allow 1-9        
@@ -1110,7 +1111,7 @@ int bsn;
         wait();
         break;
       }
-      case 'q':{      //q$;  Query block $ sensors. Show which are ACTIVE - byte of 8 sensors (7-0) to USB (& i2c)      
+      case 'q':{      //q$;  Query: block $ sensors. Show which are enabled - byte of 8 sensors (7-0) to USB (& i2c)      
         if(!isDigit(cmdString[1]))  b=1;  //q defaults to q1;    //AS.println("Query: block invalid \n");
         else b=cmdString[1]-0x30;
         j=0;
@@ -1128,7 +1129,7 @@ int bsn;
         break; 
       }
       case 'r':{      //r%%;  Refresh bsNo Reference in Sensor_ref[bsNo], Activate and may display img data
-        printf("(r%%) refresh Reference for sensor[%%]. (default r00 for all) (MUST BE UNOCCUPIED!)\n");
+        printf("(r%%%%) Refresh Reference: for sensor[%%%%]. (default r = r00 for all) (MUST BE UNOCCUPIED!)\n");
         bsn=00;      //r defaults to r00;
         if (isDigit(cmdString[1])) bsn = get_bsNo(cmdString);
         if(bsn<0) break;       //invalid bsNo       
@@ -1150,7 +1151,7 @@ int bsn;
       } 
       case 's':{      //s%%;  Scan for bright spot and set new xy for Sensor[bsNo]
         bsn = get_bsNo(cmdString);;       //s0# or s%#; accepted as Sensor number (bsn=8*%+#). Second digit should not be >7
-        if (bsn<0) { AS.print("(S%%)Scan: illegal bsNo\n"); break;  }               //do nothing if illegal bsNo.      
+        if (bsn<0) { AS.print("(s%%)Scan: illegal bsNo\n"); break;  }               //do nothing if illegal bsNo.      
         sScan=bsn;             //tell "loop()" to scan with fresh image for the bsNo in sScan. (0-79)
         sScanCount=3;          //request 3 fresh frames first to flush pipeline
         break;
@@ -1171,12 +1172,13 @@ int bsn;
         wait();        
         break;
       }
-      case 'u':{      //u%%; Undefine Sensor[%%] by setting pointer = 0 
-        if(isDigit(cmdString[1])){       
+      case 'u':{      //u%%; Undefine Sensor[%%] by setting pointer = 0       
+        if(!(isDigit(cmdString[1]))) printf("(u%%%%) undefine(erase) sensor[%%%%]\n");
+        else{       
           bsn=int(cmdString[1]-48);    
           if(isDigit(cmdString[2])&&(cmdString[2]<=0x37)){      
             bsn=bsn*8+int(cmdString[2])-48;  //2nd digit <8
-            printf("\n(u%%) Undefine: Undefining %d/%d  bsn %d\n",bsn/8,bsn&0x07,bsn);
+            printf("(u%%%%) Undefine: Undefining %d/%d  bsn %d\n",bsn/8,bsn&0x07,bsn);
             Sensor[bsn]=0L;
             SensorActive[bsn]=false;  
             SensorActiveBlk[bsn>>3] &= ~mask[bsn&7];    
@@ -1227,10 +1229,10 @@ int bsn;
         break;        
       }
       case 'x': {      //set a starting column in image for USB transmission to monitor
-        printf("x: old value = %d ", Xcolumn);
+        printf("(x###) Xcolumn: current= %d ", Xcolumn);
         Xcolumn=int(get_number(cmdString)) & 0xFFFE;       //make even 
         if(Xcolumn > 319){Xcolumn=0;printf("New val exceeds 320 -> default = 000\n");}
-        printf("(x###) Xcolumn for sample image: %d \n",Xcolumn);
+        printf("new Xcolumn for sample image: %d \n",Xcolumn);
         wait();
         break;
       }
@@ -1252,9 +1254,10 @@ int bsn;
         break;               //send immediately 
       }
       case 'z': {      //set a packet length for image transmission
-        printf("(z###) length of old packet = %d pixels ", Zlength);
-        Zlength=int(get_number(cmdString)) & 0xFFFE;       //make even 
-        if(Zlength > 320){Zlength=80;printf(" z exceeds 320 -> default = 80\n");}
+        printf("(z###) z: length of old packet = %d pixels. ", Zlength);
+        Zlength=int(get_number(cmdString)) & 0xFFFE;       //make even
+        if(Zlength<=0) Zlength=320;
+        if(Zlength > 320){Zlength=80;printf(" z### exceeds 320 -> default = 80\n");}
         if((Zlength+Xcolumn)>320) Zlength=320-Xcolumn;
         printf("New Zlength for USB image: %d pixels\n",Zlength);
         wait();
@@ -1262,7 +1265,8 @@ int bsn;
       }
       case '@':{      //@##;  set OCc character to decimal ASCII value
         OCc=char((get_number(cmdString)) & 0x7F);   // DO NOT USE char(12) with PROCESSING4
-        if(!isDigit(cmdString[1]))OCc=char(12);    // 0x12 is big & bold on Arduino monitor. 
+        if(!isDigit(cmdString[1]))OCc=char(12);    // 0x12 is big & bold on Arduino monitor.
+        if(cmdString[1]=='\n') OCc='#'; 
         printf("(@##) 'Occupied' indicator in tabulation set to ASCII 0x%x\n",OCc);
         break; 
       }
@@ -2121,7 +2125,7 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
  /***/    IFI2C { for (blk=0;blk<(block+3);blk++) {AS.print(datapk[blk],HEX);AS.print(" ");} AS.println(" ");}
           return block+3;             //return byte count
         }
-        case 'i':{            //i%%:  //write state of sensor #/#   
+        case 'i':{            //i%%:  //write state of sensor %/%   
           bsn=(byte(block&0x7F)-0x30);             //get bsn     0x30-0x39 looks like binary bsn +0x30 ('0' to 177)
           if(block<0x30)bsn=00;       //assume block has been loaded with b*8+s
                 //if 'i' from CS driver, it must output Ascii bsNo. even though it gets an id format.
