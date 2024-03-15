@@ -1,10 +1,11 @@
 //sensorCAM Alpha release                                                                                 limit >|
 
-#define BCDver 162 
+#define BCDver 163
+    //v163 tweaked 'h' cmd & catered for blank EPROM startup (no active sensors 1-79)
     //v162 refined command error messages and prompts
     //v161 some code housekeeping and modified use of SUPPLY (50/60Hz) & CYCLETIMECTR & BRIGHTSF
     //v160 added scroll toggle control to 't1/t 1'.  Limit threshold >30 (t31 makes all occupied) <multiple rows>
-    //v159 added 'F' to cmds[] from EX-CS and changed 'F' to Force Reset without confirmation \n          
+    //v159 added 'F' to cmds[] from EX-CS and changed 'F' to Force Reset without a confirmation \n          
     //v158 amended to use configCAM.h
     //v157 modified to allow EX-CS to operate on fewer vpins (0 Analog) and control through lowest vpin (700)
     //v156 tidied up a little bsNo to bsn, added A%d to 'i', changed many texts "active" to "enabled"
@@ -163,7 +164,7 @@ char OCc = '#';       //OCc character to indicate OCCUPIED in scrolling status l
 int avRefCtr=0;
 int avRefAccumulation[48];
 int emptyStateCtr[80];        //used to count No. of loops a sensor NOISE caused "OCCUPIED" status  
-int rbsn = 0;                 //bsn for current averaging If unoccupied, new 3.2sec ref regularly(~EVERY MIN.?)
+int rbsn = 1;                 //bsn for current averaging If unoccupied, new 3.2sec ref regularly(~EVERY MIN.?)
 byte newRef[48];
 bool autoRefSuspended = true; //use to stop auto referencing during conflicting commands e.g. 'r' and 'c' ("SUS")
 bool lastsuspend=true;
@@ -534,7 +535,7 @@ void loop() {
 // ***TAKE A FULL FRAME INTO fb IN RGB565 FORMAT 
 /***/ IFD AS.println(" Try a get_picture ");  // Get Picture from Camera.  New image starts when fb released.  
 /***/ IFT  timer=micros();                     // Images are "pipelined" so images are 2 "gets" old. (160mSec)
-    camera_fb_t * fb = NULL;                  //transfer rgb565 image #1 into fb (taken ~60mSec ago?)
+    camera_fb_t * fb = NULL;                  //transfer rgb565 image #1 into fb (taken  
     fb = esp_camera_fb_get();                 //get most recent frame into fb (and return pointer?)
     if(!fb) { AS.println("Camera capture #1 failed\n"); return;}   //no pic fb ? - restart program loop    
 /***/ IFT{ AS.print(timer);timer=micros()-timer;//does camera_fb_get return error if .jpg not yet ready, or does it wait
@@ -995,7 +996,8 @@ int bsn;
               }  
               break;
             default: 
-              printf("(h#) Help: h- turns all off, h# turns on Debug#, hs# can also set maxSensors to 4x# i.e.4-36(044)\n");
+              printf("(h#) Help: h- turns all off, h# turns on Debug#, hs# can also set maxSensors to 4x# i.e.4-36.(044)\n");
+              printf(" options: h0(detail) h1(timing) h2(gen) h3(i2c) h4(noise) h5(spare) h7[#](wait on bank # trip) h8(CS cmds)\n"); 
               printf("current help: ");     //if not h# or h-, print out current settings
               if(DEBUG[0]==1)printf("DE0(detail) ON; ");
               if(DEBUG[1]==1)printf("DB1(timing) ON; ");
@@ -1005,7 +1007,7 @@ int bsn;
               if(DEBUG[5]==1)printf("DB5 ON; ");
               printf(" dbug=%d, maxSensors: 0%o brightSF: %d\n",dbug,maxSensors,brightSF); 
               wait();                 //stops looping indefinitely until input a newline (\n)       
-            }
+          }
         wait();
         break; 
       }
@@ -1173,18 +1175,20 @@ int bsn;
       }
       case 'u':{      //u%%; Undefine Sensor[%%] by setting pointer = 0       
         if(!(isDigit(cmdString[1]))) printf("(u%%%%) undefine(erase) sensor[%%%%]\n");
+        
         else{       
           bsn=int(cmdString[1]-48);    
           if(isDigit(cmdString[2])&&(cmdString[2]<=0x37)){      
-            bsn=bsn*8+int(cmdString[2])-48;  //2nd digit <8
+            bsn=bsn*8+int(cmdString[2])-48;      //2nd digit <8
             printf("(u%%%%) Undefine: Undefining %d/%d  bsn %d\n",bsn/8,bsn&0x07,bsn);
             Sensor[bsn]=0L;
             SensorActive[bsn]=false;  
             SensorActiveBlk[bsn>>3] &= ~mask[bsn&7];    
+            SensorTwin[bsn]=0;                   //erase any twin
           }
           if ((cmdString[1]=='9') && (cmdString[2]=='9')){            //u99 undefines ALL sensors
             printf("(u99): Undefine *ALL* Sensors - set Sensor[]=0\n");
-            for (int i=0;i<80;i++) {Sensor[i]=0;SensorActive[i]=0;SensorActiveBlk[i>>3]=0; }
+            for (int i=0;i<80;i++) {Sensor[i]=0;SensorActive[i]=0;SensorActiveBlk[i>>3]=0;SensorTwin[bsn]=0;}
             printf("To clear Sensor pointers in EEPROM also, user should follow 'u99' with an 'e' cmd\n");
           }
         }
@@ -2364,7 +2368,7 @@ void boxIt(unsigned long Point,int BSno){           //Use sensor() pointer into 
 
 // FUNCTION TO COMPUTE NEW REF'S REGULARLY IF ACTIVE SENSORS NOT TRIPPED
 void refRefresh(bool suspend){     
-          //if suspend false, sequentially calculate new ref image for each enabled, vacant, srnsor
+          //if suspend false, sequentially calculate new ref image for each enabled & vacant sensor
     if (!lastsuspend&&suspend) lastsuspend=true;
     if ( lastsuspend&&suspend) { AS.print("SUS "); return; } 
     if ( lastsuspend&&!suspend) {         //on transition to !suspend, dump all averaging and restart               
@@ -2392,10 +2396,12 @@ void refRefresh(bool suspend){
               avRefAccumulation[i]=0;   //clear accumulator
           }
           avRefCtr=0;                   //restart counter
+          int oldrbsn=rbsn;
           rbsn = (rbsn+1)%80;           //move to next sensor
           while(!SensorActive[rbsn]){   //skip to next enabled sensor
             rbsn = (rbsn+1)%80;         
             if(rbsn==0) rbsn=1;         //leave sensor[00] to accumulate 64 samples for now
+            if(rbsn==oldrbsn) break;    //abort if search finds no more active sensors
           }
         }
       }
