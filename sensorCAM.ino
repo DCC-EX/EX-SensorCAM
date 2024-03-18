@@ -1,6 +1,6 @@
 //sensorCAM Alpha release                                                                                 limit >|
-
-#define BCDver 163
+#define BCDver 164
+    //v164 adjusted 'y' command to better accommodate various PC speeds.
     //v163 tweaked 'h' cmd & catered for blank EPROM startup (no active sensors 1-79)
     //v162 refined command error messages and prompts
     //v161 some code housekeeping and modified use of SUPPLY (50/60Hz) & CYCLETIMECTR & BRIGHTSF
@@ -235,7 +235,7 @@ char cmdString[64];     // holds a whole command line from input source
 char cmdChar;
 bool Yhold=false;       //halt refreshing frames so multiple 'y's can see same fb
 int  Xcolumn=0;         //default value for 'x' command
-int  Yrow=0;            //dfault for 'y' cmd
+int  Yrow=0;            //default for 'y' cmd
 int  Zlength=320;       //default full line for 'z' command
 char Yheader[10]="y_x_z_ck:";
 
@@ -392,10 +392,10 @@ void setup() {
       }
     }  //end of else{ MyWebServer=true; 
 
-      AS.printf("Camera init attempt...\n");
+      printf("Camera init attempt...\n");
       esp_err_t err = esp_camera_init(&config);    // camera init
       if (err != ESP_OK) {
-        AS.printf("Camera init failed with error 0x%x", err);
+        printf("Camera init failed with error 0x%x", err);
         delay(10000);
         ESP.restart();
       }
@@ -520,6 +520,7 @@ void loop() {
 // ***CALCULATE AND PRINT LOOP TIME - & IF CALLED FOR, UPDATE NEW CAMERA SETTINGS   
 /***/ { IFT AS.print("\n******** ");
 /***/   timerLoop=millis()-timerLoop; if(timerLoop==99) timerLoop=100;
+        if(timerLoop<100)AS.print(' ');
 /***/   IFS{ AS.print(timerLoop); AS.print("mS; "); }   //add 1 just to stop display jitter with 99
 /***/   timerLoop=millis();
 /***/ }
@@ -553,11 +554,11 @@ void loop() {
 /***/ IFT{ timer=micros()-timer; /*ltoa(timer,zStr,10);*/AS.print("Decode (uS):"); AS.println(timer);}
      
       if (!converted) {AS.print("Conversion to rgb666 failed\n"); return;}
-/***/ IFD printf("should now be rgb666 in Sensor666[]\n");
-      
+/***/ IFD printf("should now be rgb666 in Sensor666[]\n");      
 //      int fblength = fb->len;   //maybe needed for a scan?
 
 // ****SEE IF IMAGE DUMP (TO PROCESSING4)CALLED FOR & DUMP AS REQUESTED BEFORE NEW FRAME INITIATED
+      if(Yhold) count=0;      //reset command string index & prepare for a new command following recent y#
       while(Yhold){   //do not proceed with loop() until Yhold cleared by "yy\n" command
         if(SendYpacket){
           imageFB = fb->buf;     //set a ptr to start of image buf
@@ -579,15 +580,14 @@ uint32_t  Ycksum=0;              //Calculate checksum
           }
           Yheader[6]=byte(Ycksum & 0x00FF); Yheader[7]=byte(Ycksum >>8);
           i=Serial.write(Yheader,9);                    //write 9 header bytes
-          if(i != 9) AS.printf("Y header write error %d\n",i);
+          if(i != 9) printf("Y header write error %d\n",i);
           i=Serial.write(&imageFB[j],Zlength*2);        //write data
-          if(i != Zlength*2) AS.printf("Y data write error %d\n",i);
+          if(i != Zlength*2) printf("Y data write error %d\n",i);
 
-          SendYpacket=false;    //skip and auto resend if packet length error???
+          SendYpacket=false;    
         }
-          
-        count=0;      //reset command string index & continue to process new commands.
-        while (AS.available() > 0) {         //each command is followed by a fresh loop to "get_image"
+
+        while (AS.available() > 0) {   //each command is followed by a fresh loop to "get_image"
           cmdChar=AS.read();
           cmdString[count]=cmdChar;               //add it to cmd string
           count+=1;
@@ -680,7 +680,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
      rollNsG=rollNsG+sumG-rollNsFrameG[frameNo]; rollNsFrameG[frameNo]=sumG; r00NsG=rollNsG>>6;  //divide by 64 (frames)
      rollNsB=rollNsB+sumB-rollNsFrameB[frameNo]; rollNsFrameB[frameNo]=sumB; r00NsB=rollNsB>>6;  //also divide by 16 to get av/pixel
   //   Print Average bright (16x3 bytes) & sum of squared colour noise in a frame (RMS value=sqrt(r00NsR/16) ..etc.
-     IFN AS.printf("s00 roll'n brAv=%d, noisAv=%d %d %d s",r00Av,r00NsR,r00NsG,r00NsB);  //SHOULD THESE BE /16 as 16 pixels in every r00Ns%
+     IFN printf("s00 roll'n brAv=%d, noisAv=%d %d %d s",r00Av,r00NsR,r00NsG,r00NsB);  //SHOULD THESE BE /16 as 16 pixels in every r00Ns%
 
 
 // ****DELAY TO REDUCE FRAMES PER SECOND FROM one/80mS to one/100mSec FOR PSRAM 25% IDLE (DE-STRESS) TIME. 
@@ -698,7 +698,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
  
       esp_camera_fb_return(fb);         //release jpg camera image frame buffer - starts new frame capture? 
          //sensor images now in 3 byte format in array Sensor666[] 
-
+	 
 /***/ IFT{ AS.print("50Hz fb return(uS) "); AS.println(timer);}
      
 // ****IF CALLED FOR BY c####, OR STARTUP(), DO A FULL REFERENCE UPDATE FOR ALL ACTIVE SENSORS
@@ -838,22 +838,22 @@ int bsn;
         bsn = get_bsNo(cmdString); absNo1=cmdString[1]; absNo2=cmdString[2];    //save bsNo digits 
         if(bsn<0) { printf("(a%%%%,rrr,xxx) enAble Sensor(%%%%)[& sets new coordinates for it]\n"); break; }
         if(cmdString[3]==','){
-    int  rowVal=int(get_number(&cmdString[3]));
-         if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
-        else {
-          if(cmdString[5]==',') i=5;
-          if(cmdString[6]==',') i=6;
-          else i=7;
-    int   xVal=get_number(&cmdString[i]);
-          if(xVal<0 || xVal>319) printf("invalid xValue\n");
-          else{ 
-            Sensor[bsn]=pitch*rowVal + 2*xVal; 
-            printf("(a%%%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
-            aRefCtr=4;        //get # fresh frames then take ref for sensor[aRef]
+    int   rowVal=int(get_number(&cmdString[3]));
+          if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
+          else {
+            if(cmdString[5]==',') i=5;
+            if(cmdString[6]==',') i=6;
+            else i=7;
+    int     xVal=get_number(&cmdString[i]);
+            if(xVal<0 || xVal>319) printf("invalid xValue\n");
+            else{ 
+              Sensor[bsn]=pitch*rowVal + 2*xVal; 
+              printf("(a%%%%,rrr,xxx)setting new coordinates for Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
+              aRefCtr=4;        //get # fresh frames then take ref for sensor[aRef]
+            }
           }
-        }
-        wait();
-      }      
+          wait();
+        }      
         if (bsn>=0) { printf("(a%%%%) enAble: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
  //         printf("PLEASE DO AN r%%%% AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
          
@@ -1240,17 +1240,17 @@ int bsn;
         break;
       }
       case 'y': {      //select an image row and send packet to USB     
-        if(cmdString[1]==10) {SendYpacket=true; break;} //'y' alone should repeat last y (e.g. for crc error retry)
-        if(cmdString[1]=='y') {Yhold=false; break;}    //end image transfer with a "yy" command
-        Yrow=int(get_number(cmdString));      //'y\n' would set Yrow = 0
+        if(cmdString[1]=='\n'){SendYpacket=true; break;} //'y' alone should repeat last y (e.g. for crc error retry)
+        if(cmdString[1]=='y'){Yhold=false; break;}    //end image transfer with a "yy" command
+        Yrow=int(get_number(cmdString));        //'y?\n' would default to Yrow = 0 if not digit
         if(Yrow>239){AS.print("ERROR row exceeds limit\n");break;}
-        if(!Yhold) { 
-/***/     Yheader[1]=byte(Yrow);                 //prepare header
+        if(!Yhold) {                            //first 'y' command
+/***/     Yheader[1]=byte(Yrow);                //prepare header
 /***/     Yheader[3]=byte(Xcolumn/2);            
 /***/     Yheader[5]=byte(Zlength/2);           //Num. bytes sent = 4 x Zlength/2 + header
 /***/     AS.println(Yheader); 
-          AS.println("frame stays frozen until cleared with 'yy' command :::\n"); //use ::: as signal to Processing?
-          boxSensors=true;       
+          AS.println("frame stays frozen until cleared with 'yy' command :::\n"); 
+          boxSensors=true;                      //need to add fresh sensor boxes to image
         }
         SendYpacket=true;     //send data after next frame
         Yhold=true;          //freeze frame until next "yy" cmd    
