@@ -1,5 +1,6 @@
-//sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 164
+//sensorCAM Alpha release  a                                                                               limit >|
+#define BCDver 165
+    //v165 adjusted timerLoop accuracy,r comments,a&k row<10 now ok 
     //v164 adjusted 'y' command to better accommodate various PC speeds.
     //v163 tweaked 'h' cmd & catered for blank EPROM startup (no active sensors 1-79)
     //v162 refined command error messages and prompts
@@ -519,10 +520,12 @@ void loop() {
   
 // ***CALCULATE AND PRINT LOOP TIME - & IF CALLED FOR, UPDATE NEW CAMERA SETTINGS   
 /***/ { IFT AS.print("\n******** ");
-/***/   timerLoop=millis()-timerLoop; if(timerLoop==99) timerLoop=100;
-        if(timerLoop<100)AS.print(' ');
-/***/   IFS{ AS.print(timerLoop); AS.print("mS; "); }   //add 1 just to stop display jitter with 99
+/***/   int loopTime=millis()-timerLoop; 
+		if(loopTime==99) loopTime=100;
 /***/   timerLoop=millis();
+        if(loopTime<100)AS.print(' ');
+/***/   IFS{ AS.print(loopTime); AS.print("mS; "); }   //add 1 just to stop display jitter with 99
+
 /***/ }
       HistoLoops++;                 //increment loop counter
       if (stdCtimer < millis()) {   //time to invoke new camera settings after 'c' std delay
@@ -840,10 +843,10 @@ int bsn;
         if(cmdString[3]==','){
     int   rowVal=int(get_number(&cmdString[3]));
           if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
-          else {
+          else { 
+            i=7;
             if(cmdString[5]==',') i=5;
-            if(cmdString[6]==',') i=6;
-            else i=7;
+            if(cmdString[6]==',') i=6;            
     int     xVal=get_number(&cmdString[i]);
             if(xVal<0 || xVal>319) printf("invalid xValue\n");
             else{ 
@@ -1039,9 +1042,9 @@ int bsn;
    int  rowVal=int(get_number(&cmdString[3]));
         if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
         else {
+		  i=7;
           if(cmdString[5]==',') i=5;
-          if(cmdString[6]==',') i=6;
-          else i=7;
+          if(cmdString[6]==',') i=6;       
    int    xVal=get_number(&cmdString[i]);
           if(xVal<0 || xVal>319) printf("invalid xValue\n");
           else{ 
@@ -1140,7 +1143,7 @@ int bsn;
           SensorActive[bsn]=true;      //grab_ref() gets image from Sensor666[] and computes new cRatios and brightness
           SensorActiveBlk[bsn>>3] |= mask[bsn&7];
           grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],&Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12]);  //includes new Cratios & brightness
-          printf("References: enable new Sensor_ref[%d/%d]; HEX bytes[0-6]: %X %X %X  %X %X %X\n",bsn>>3,bsn&7,Sensor_ref[bsn*S666_pitch],Sensor_ref[bsn*S666_pitch+1],Sensor_ref[bsn*S666_pitch+2],Sensor_ref[bsn*S666_pitch+3],Sensor_ref[bsn*S666_pitch+4],Sensor_ref[bsn*S666_pitch+5]);
+          printf("References: enable new Sensor_ref[%d/%d]; 1st 2 HEX rgb pixels[0-5]: %X %X %X  %X %X %X\n",bsn>>3,bsn&7,Sensor_ref[bsn*S666_pitch],Sensor_ref[bsn*S666_pitch+1],Sensor_ref[bsn*S666_pitch+2],Sensor_ref[bsn*S666_pitch+3],Sensor_ref[bsn*S666_pitch+4],Sensor_ref[bsn*S666_pitch+5]);
           printf("full new ref[bsNo] from current frame only - average ref still to be calculated\n");
 /***/ IFN write_img_sample(&Sensor666[bsn*48], S666_row, 0L, 12 );           //prints out ref & new img[bsNo] for 1 frame only*
           averageRbsn=bsn;        //set a flag for main loop to compute a multi-second (AVCOUNT=32) average Reference and update _ref[bsn]
