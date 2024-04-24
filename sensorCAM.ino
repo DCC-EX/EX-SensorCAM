@@ -1,8 +1,9 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 167
+#define BCDver 168
+    //v168 add minSensors to 'm', pvtThresholds to 't##,%%' and pvtThreshold to 'i%%' printout.
     //v167 added r%%* to reset all early part of a sensor bank, added brightSF to scroll, 
     //V166 use micros() to maintain sync even with interruptions @ 71min long rollover & fixed wait() rollover.
-    //v166 adjusted timerLoop accuracy,r comments,a&k row<10 now ok 
+    //v165 adjusted timerLoop accuracy,r comments,a&k row<10 now ok 
     //v164 adjusted 'y' command to better accommodate various PC speeds.
     //v163 tweaked 'h' cmd & catered for blank EPROM startup (no active sensors 1-79)
     //v162 refined command error messages and prompts
@@ -71,14 +72,15 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
        //    (tried to use, but rendered FLASH RAM unprogrammable!(stuffed one CAM)
 
 #include <EEPROM.h>
-#define EEPROM_SIZE 320+8+80 //long pointers into image +reboot flag integer(+threshold,nLED,min2flip,maxSensors?)
-#define EPvFlag   EEPROM_SIZE-80-8      //VFlag stored as (4byte)integer, others as byte
+#define EEPROM_SIZE 320+8+80+80 //long pointers to image +reboot flag int (+threshold,nLED,min2flip,maxSensors?)
+#define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (4byte)integer, others as byte
 //#define EPminSensors EEPROM??
-#define EPnLED     EEPROM_SIZE-80-4     //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
-#define EPthreshold EEPROM_SIZE-80-3
-#define EPmin2flip   EEPROM_SIZE-80-2
-#define EPmaxSensors  EEPROM_SIZE-80-1  //use to limit printout of sensor states (if > 40, loop time may suffer)
-#define EPSensorTwin   EEPROM_SIZE-80  //save SensorTwin array
+#define EPnLED     EEPROM_SIZE-80-80-4  //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
+#define EPthreshold EEPROM_SIZE-80-80-3
+#define EPmin2flip   EEPROM_SIZE-80-80-2
+#define EPmaxSensors  EEPROM_SIZE-80-80-1//use to limit printout of sensor states (if > 40, loop time may suffer)
+#define EPSensorTwin   EEPROM_SIZE-80-80  //save SensorTwin array
+#define EPpvtThreshold  EEPROM_SIZE-80    //Individual thresholds (use default threshold if =255)
                                       //maxSensors may also be used to avoid other wasted processing time.
 // WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
 
@@ -126,14 +128,14 @@ i%% * Individual sensor %% Information. Optional i%%,$$ sets a Twin sensor[$$] f
 j$#   adJust camera setting $ to value # and display most settings (as for ‘g’) ‘j’ does NOT get new refs. - use r  
 k%%,rrr,xxx   * Set coordinates of Sensor[%%] to row: rrr &  xVal: xxx. Follow with r%%. Verify values with p$ cmd 
 l%%   (Lima) force sensor %% to ON (1= occupied (LED lit) & also set SensorActive[%%] false to inactivate updating
-m$  * Min. no.($) of sequential frames to trigger Occupied threshold for detection (default 2). (m$,%% maxSensors)    
+m$  * Min. no.($) of sequential frames to trigger Occupied threshold for detection (def.=2) (m$,## max/minSensors)    
 n$  * bank Number $ assignment to the programmable LED to show its occupancy status.
 o%%   (Oscar)force sensor %% off (0=UN-occupied (LED off) & also set SensorActive[%%] false to inactivate updating
 p$  * Position Pointer table for banks 0 to $ giving DEFINED sensor r/x positions.  p%% shorter.  <32 data bytes>
 q$  * Query bank $, to show which sensors enabled (in bits 7-0). 1=enabled. q9 gives ALL    <Req. $+2 data bytes>
 r%%[*]  Refresh average Sensor_Ref[%%] (Iff defined), enable & calc. cRatios etc.  r%%* refreshes block up to S%% 
 r00   Renew Average Refs etc. for ALL defined sensors.  Ignores active[].  Sensor 00 reserved for brightness ref.
-t## * show Threshold level being used for detection (optional ## sets 32-99) t1 toggle data scroll <Req. 1+ bytes>
+t##[,%%] * show/set Threshold level being used for Sensors (## sets 32-98)[for S%%] t1 toggle scrolling <1+ bytes>
 u%% * Un-define/remove sensor %% by setting INACTIVE & Sensor[%%]=0. u99 erases ALL. Needs ‘e’ to erase from EPROM
 v   * Video mode.  Reboots CAM in webserver mode. “v2” will connect to 2nd (alt.) router ssid.("ve" gives version)
 x###  Sets column for start of Processing image transfer (0-318)
@@ -195,6 +197,7 @@ bool SensorActive[80];     //if false (inactive) then don't update SensorStat[] 
 byte SensorActiveBlk[10];  //each holds 8 sensor bits(8 bits/block) e.g. SensorActive[07-00] in SensorActiveBlk[0]
 int  SensorFilter[80];     //use to slow dropout by a cycle or two - needs to be unoccupied for more than 100mSec
 byte SensorTwin[80];       //if sensors in pairs use to identify secondary bsn.  (should save into eprom!)
+byte pvtThreshold[80];
 int  min2flip = 2;         //number of exceptional frames required before transitioning output tripped/untripped.
 byte mask[8]= {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80};
 int bsNo;               //parameter from text commands
@@ -371,7 +374,7 @@ void setup() {
          //clear EEPROM Web flag and proceed to webserver
         EEPROM.writeInt(EPvFlag,0);  //clear flag at end of EEPROM
         EEPROM.commit();
-        EEPROM.end();   //burn eeprom   //can't repeat 'e' after end() command (unless do another ()?)
+        EEPROM.end();   //burn eeprom   
     
       config.pixel_format = PIXFORMAT_JPEG;
    
@@ -461,11 +464,12 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
       for (i=0;i<80;i++){         //will need to load 80 (long)Sensor[] pointers from EPROM and 80 byte Twin values
         Sensor[i]=EEPROM.readLong(i*4);       //get a long (4byte) pointer from EEPROM. 
         SensorTwin[i]=EEPROM.read(EPSensorTwin+i);
-        if ((Sensor[0]>153600L)||(Sensor[0]==0))                 //153600L = size of image
+        pvtThreshold[i]=EEPROM.read(EPpvtThreshold+i);   //if =255 then use default threshold
+        if ((Sensor[0]>153600L)||(Sensor[0]==0))         //153600L = size of image
           Sensor[0]=(320*120+160)*2;           //create first S00 as k00,120,160 (~centre)    
         else
           if (Sensor[i]>153600L) Sensor[i]=0;   //eliminates wild values (all 1's) from a pristine EPROM
-        if (SensorTwin[i]>80)  SensorTwin[i]=0;       
+        if (SensorTwin[i]>79)  SensorTwin[i]=0;       
         if (Sensor[i]!=0){  IFT printf("define Sensor[0x%x]= %lu \n",i,Sensor[i]);        
           SensorActive[i]=true;               //initially activate all sensors defined (i.e. >0) in EPROM
           SensorActiveBlk[i>>3]=SensorActiveBlk[i>>3] | mask[i&0x07]; 
@@ -828,6 +832,7 @@ void processCmd(byte *imagePtr,int pitch,unsigned long *Sensor){                
     //Sensor is a pointer to the Sensor array of pointers into the image Data
 int b=0;        //local (block) variable
 int c, i, j;    //j: sensor index
+int param2;      // second cmd argument
 int bsn; 
 /***/ IFI2C for(i=0;i<12;i++) AS.print(char(cmdString[i]));
     if(cmdString[1]==' ') for(i=1;i<62;i++) cmdString[i]=cmdString[i+1];   
@@ -936,15 +941,17 @@ int bsn;
         break;        //leaves flag for loop() to complete print output.       
       } 
       case 'e':{     //e;  EPROM burn any changes to Sensor[] & some other parameters
-        printf("(e)EPROM: Save latest threshold (%d), min2flip (%d), nLED (%d), maxSensors (%d), Sensor[] & SensorTwin[] to EPROM\n",threshold,min2flip,nLED,maxSensors);
+        printf("(e)EPROM: Save latest threshold (%d), min2flip (%d), nLED (%d), maxSensors (%d), Sensor[] SensorTwin[] & pvtThreshold to EPROM\n"\
+               ,threshold,min2flip,nLED,maxSensors);
         EEPROM.write(EPnLED,byte(nLED));
         EEPROM.write(EPthreshold,byte(threshold));
         EEPROM.write(EPmin2flip,byte(min2flip));
         EEPROM.write(EPmaxSensors,byte(maxSensors));
-        printf("EPROM: Save latest sensor pointers to EPROM along with threshold, nLED, min2flip & maxSensors\n");
+        printf("EPROM: Save latest sensor pointers to EPROM along with thresholds, nLED, min2flip & maxSensors\n");
         for (i=0;i<80;i++) {            //put changed values for SensorTwin[] & Sensor[] in EEPROM
           EEPROM.writeLong(i*4,Sensor[i]);            
-          EEPROM.write(EPSensorTwin+i,SensorTwin[i]); 
+          EEPROM.write(EPSensorTwin+i,SensorTwin[i]);
+          EEPROM.write(EPpvtThreshold+i,pvtThreshold[i]); 
         }
         EEPROM.commit();                //ESP32 method
         EEPROM.end();                   //burn eeprom   
@@ -1025,6 +1032,7 @@ int bsn;
         else                 printf("false/unoccupied ");
         printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
         if (SensorTwin[bsn]!=0)printf(" Twin = 0%o ",SensorTwin[bsn]);
+        if (pvtThreshold[bsn]!=255)printf(" pvtThreshold= %d ",pvtThreshold[bsn]);
         b=0;
         for(j=0;j<48;j++) b += Sensor666[bsn*48+j];
         printf(" brightness A%d\n",b);
@@ -1077,8 +1085,10 @@ int bsn;
           if(b>0) min2flip = b;                //only allow 1-9        
         }  
         if (cmdString[2]==',') {   //Optional set maxSensors (needed when initialising a new CAM)
-           if (isDigit(cmdString[3])) maxSensors=get_number(&cmdString[2]);  //should limit to 80!
-           if (maxSensors > 80) maxSensors = 80;        
+          if (isDigit(cmdString[3])) { param2=get_number(&cmdString[2]);  
+            if (param2 >100) minSensors = param2%50;  //limit to 0-49.
+            else maxSensors = param2%80;             //limit to 0-79.
+          }               
         }
         printf("(m$,##) MinMax: $ min2flip frames OCCUPIED set to %d, maxSensors: 0%o (minSensors: 0%o TwoImage_MaxBS: 0%o)\n",min2flip,maxSensors,minSensors,TWOIMAGE_MAXBS);  
         wait();
@@ -1164,18 +1174,29 @@ int bsn;
         break;
       }     
       case 't':{      //t_:  Set threshold 31 to 250 for sensor "trip", send value to USB (& i2c)
-        error = get_number(cmdString);  //no number returns 0
-        if(error > 30) threshold=error;  // will be permanent only use 'e' command (along with sensor changes and nLED)
-        else if(error==1) {
+        int param1 = get_number(cmdString);  //no number returns 0
+        if(param1==00 && cmdString[3]==',') param1=99;
+        if(param1 > 30) {
+          if(cmdString[3]==',') { 
+            bsn=00;       
+            if (isDigit(cmdString[1])) bsn = get_bsNo(&cmdString[3]);        
+            if(bsn > 0) pvtThreshold[bsn]=byte(param1);   
+            if(param1 == 99) {pvtThreshold[bsn]=255;param1=00;}      // clear pvtThreshold
+            printf("(t##,%%%%) setting pvtThreshold to %d for sensor S%o \n",param1,bsn);
+          }          
+          else threshold=param1;  // will be permanent only use 'e' command (along with sensor changes and nLED)
+        }
+        else if(param1==1) {
               scroll=!scroll;  //use to hide scrolling status data.
               if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
         }
-        printf("(t##) Threshold: trip set to %d\n(t1)will toggle scroll data ON/OFF\n", threshold);
-        if(cmdString[3]==',') { 
+        printf("(t##) Threshold: trip point set to %d\n(t1)will toggle scroll data ON/OFF\n", threshold);
+/*       if(cmdString[3]==',') { 
           error = get_number(&cmdString[3]);  //get second parameter
           if(error > 0) minSensors=error-1;   // can't set minSensors to 0 otherwise
           printf("(t##,##) setting minSensors to 0%o \n",minSensors);
-        }
+        } 
+*/
         wait();        
         break;
       }
@@ -1674,6 +1695,7 @@ bool processDiff(int bsn){
 /*  int SensorHisto[80*5];       //make global   
     int SensorHiCount[80];      */
     int SenHiCnt;
+    int Threshold;
 
         emptyStateCtr[bsn]++;                   //increment sensor "un-tripped" counter (clear later if tripped 
         bright=quad[0]+quad[1]+quad[2]+quad[3];
@@ -1688,8 +1710,9 @@ bool processDiff(int bsn){
           if(bpd<128)i2cData[i2cDatai+1]=byte(bpd); else i2cData[i2cDatai+1]=127;     //cap bpd value at 127 to fit in i2c byte.
           if (i2cDatai<56)i2cDatai += 2;        //increment provided within buffer limit(58) (may corrupt last bsn)   
         }
-        
-        if (bpd < threshold) {    //low diff thinks unoccupied
+        Threshold = pvtThreshold[bsn];
+        if (Threshold==255) Threshold=threshold;
+        if (bpd < Threshold) {    //low diff thinks unoccupied
         
           if(SensorHiCount[bsn]>0){          //If had some recent hi's, update histogram
             SenHiCnt=SensorHiCount[bsn];     
