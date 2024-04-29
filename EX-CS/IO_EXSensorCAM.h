@@ -489,7 +489,7 @@ uint8_t status = _i2crb.status;
 			servoBuffer[4] = profile;
 			servoBuffer[5] = duration & 0xFF;
 			servoBuffer[6] = duration >> 8;
-			if(profile=249) delay(100);				//wait for new frame
+			if(profile==249) delay(100);				//wait for new frame
 		}
 		if ((errors==0) && (responseBuffer[0] == EXIORDY)) {
            return;
