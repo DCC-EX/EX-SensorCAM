@@ -79,4 +79,9 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define BAUD 115200      // Limits full QVGA Serial image transfer time to 13seconds.      
 #define BAUD 115200          
 //
+// Set Sensor size at 0 for default 4x4 pixel size (16 usable pixels)
+// For larger footprint set to # (1-9) for size (4+#)x(4+#)
+//#define SEN_SIZE 2       //2 gives 6x6 pixel sensor size (16 usable corner pixels)
+#define SEN_SIZE 0         //0 gives standard 4x4 pixels
+//
 /////////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,6 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 168
+#define BCDver 169
+    //v169 made sensor size configurable using SEN_SIZE (0-7) to insert extra unused pixels.
     //v168 add minSensors to 'm', pvtThresholds to 't##,%%' and pvtThreshold to 'i%%' printout.
     //v167 added r%%* to reset all early part of a sensor bank, added brightSF to scroll, 
     //V166 use micros() to maintain sync even with interruptions @ 71min long rollover & fixed wait() rollover.
@@ -24,7 +25,10 @@
 //#define SUPPLY   10     //see configCAM.h - set period to 10 half-cycles of mains (50Hz) (use 25 for 60Hz)
 #define CYCLETIME 100000  //100mSec cycle time syncs with 5cycles of 50Hz and 6 cycles at 60 Hz
 #ifndef BRIGHTSF
-#define BRIGHTSF 3		  //increases sensitivity.  If 1, 20% change adds 3*SF to diff. 5% is ignored 
+#define BRIGHTSF 3		  //increases sensitivity.  If 1, 20% change adds 3*SF to diff. 5% is ignored
+#endif
+#ifndef SEN_SIZE
+#define SEN_SIZE 0      //sensor expansion - add SEN_SIZE rows and columns + through 4x4 sensor. 
 #endif
 #define EXIOINIT 0xE0
 #define EXIORDY  0xE1     //OK & ready for next ioexpander cmd
@@ -72,19 +76,20 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
        //    (tried to use, but rendered FLASH RAM unprogrammable!(stuffed one CAM)
 
 #include <EEPROM.h>
-#define EEPROM_SIZE 320+8+80+80 //long pointers to image +reboot flag int (+threshold,nLED,min2flip,maxSensors?)
+#define EEPROM_SIZE 320+8+80+80 //long pointers into image +reboot flag integer(+threshold,nLED,min2flip,maxSensors?)
 #define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (4byte)integer, others as byte
 //#define EPminSensors EEPROM??
-#define EPnLED     EEPROM_SIZE-80-80-4  //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
+#define EPnLED     EEPROM_SIZE-80-80-4     //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
 #define EPthreshold EEPROM_SIZE-80-80-3
 #define EPmin2flip   EEPROM_SIZE-80-80-2
-#define EPmaxSensors  EEPROM_SIZE-80-80-1//use to limit printout of sensor states (if > 40, loop time may suffer)
+#define EPmaxSensors  EEPROM_SIZE-80-80-1  //use to limit printout of sensor states (if > 40, loop time may suffer)
 #define EPSensorTwin   EEPROM_SIZE-80-80  //save SensorTwin array
 #define EPpvtThreshold  EEPROM_SIZE-80    //Individual thresholds (use default threshold if =255)
                                       //maxSensors may also be used to avoid other wasted processing time.
 // WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
 
 #define RGB565p  2                // bytes per pixel in RGB565 image
+#define FBPITCH  320*RGB565p      // bytes per row of FB (QVGA=320 pixels)
 
 bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false}; //show detail debug to USB output
 #define AS   Serial           //Arduino Serial abbreviation
@@ -1641,7 +1646,7 @@ void decode565(byte *iD,long offset, byte *rgb666){
 //  DECODE RGB565 FRAME INTO COMPACT SENSOR FRAME OF RGB666 FORM
 bool f565to666( byte *imageData,int pitch, unsigned long *sensor, byte *f666, bool *SensorActive){
       //imageData is pointer to full RGB565 frame at 2 bytes/pixel (fb)
-      //pitch is 2*width of imageData (QVGA 320 * 2)
+      //pitch is 2*width of imageData (QVGA 2*320)
       //sensor[] contains 80 pointers into RGB565 frame
       //f666 is the destination (rgb666 3 byte format)) for extracted sensor images (80x4x4x3 bytes)
       //SensorActive[] is true/false (only needed if intend to skip inactive sensors)
@@ -1649,15 +1654,18 @@ byte *iPtr;
 byte *iPtr1; 
 int sn;    //sensor number being extracted
 int r;     //row count   
-int i;     //pixel count       
+int i;     //pixel count 
+int j;     //destination offset 
     for(sn=0;sn<80;sn++){    //decode all 80 Sensor images  
         //for speed, might modify so only active sensors are decoded but this function only takes <400uSec 
       iPtr1=imageData+Sensor[sn];   //point to start of sensor
       for (r=0;r<4;r++) {           //do for four consecutive image lines/rows
-        iPtr=iPtr1+r*pitch;         //point to LHS of sensor
-    int j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)
+        if(r<2) iPtr=iPtr1+r*pitch;         //point to LHS of sensor
+        else    iPtr=iPtr1+(r+SEN_SIZE)*pitch;
+        j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)
         for (i=0;i<4;i++){          //decode 4 pixels per sensor row
-          decode565(iPtr,long(i*2),&f666[j+i*3]); 
+          if(i<2) decode565(iPtr,long(i*2),&f666[j+i*3]);
+          else    decode565(iPtr,long((i+SEN_SIZE)*2),&f666[j+i*3]);
         }
       }    
     }
@@ -2374,17 +2382,18 @@ void wait(){
 
 //FUNCTION TO PLACE A BOX AROUND SENSORS IN A CAMERA IMAGE FOR DISPLAY
 void boxIt(unsigned long Point,int BSno){           //Use sensor() pointer into image 
- int color565[]={0x0801,0x8920,0xF820,0xFC20,0xFFD0,0x07E0,0x081F,0xF81F,0x630C,0xFFFF};//0-9
-    if ((Point>635) && (Point<(640*235))) {  //no box if too close to top or bottom edge  
-      for(int i=0;i<12;i++){
-        imageFB[Point-2-640+i]=0xDE;      //previous row
-        imageFB[Point-2+640*4+i]=0xDE;    //next row
+ int i;
+ int color565[]={0x0801,0x8920,0xF820,0xFC20,0xFFD0,0x07E0,0x081F,0xF81F,0x630C,0xFFFF}; //0-9
+    if ((Point>FBPITCH) && (Point<(FBPITCH*(240-5-SEN_SIZE)))){  //no box if too close to top or bottom edge  
+      for(i=0;i<((4+SEN_SIZE)*RGB565p);i++){
+        imageFB[Point-FBPITCH+i]=0xFF; //DE;                //top row white
+        imageFB[Point+FBPITCH*(4+SEN_SIZE)+i]=0xDE;    //bottom row
       }
-      for(i=0;i<6;i++) {
-        imageFB[Point-640-2+i*640]=byte(color565[BSno>>3]>>8);
-        imageFB[Point-640-1+i*640]=byte(color565[BSno>>3]&0xFF);
-        imageFB[Point-640+8+i*640]=byte(color565[BSno&0x07]>>8);
-        imageFB[Point-640+9+i*640]=byte(color565[BSno&0x07]&0xFF);
+      for(i=-1;i<(5+SEN_SIZE);i++) {
+        imageFB[Point-2+i*FBPITCH]=byte(color565[BSno>>3]>>8);
+        imageFB[Point-1+i*FBPITCH]=byte(color565[BSno>>3]&0xFF);
+        imageFB[Point+(4+SEN_SIZE)*2+i*FBPITCH]=byte(color565[BSno&0x07]>>8);
+        imageFB[Point+1+(4+SEN_SIZE)*2+i*FBPITCH]=byte(color565[BSno&0x07]&0xFF);
       }
     }
     return;
