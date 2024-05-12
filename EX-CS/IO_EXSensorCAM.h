@@ -1,4 +1,4 @@
-/*  21/02/24 
+/*  12/MAY/24 
  *  © 2022, Peter Cole. All rights reserved.
  *  © 2023, Barry Daniel ESP32 revision 
  *  © 2024, Harald Barth. All rights reserved.
@@ -305,6 +305,11 @@ private:
   int _readAnalogue(VPIN vpin) override {
     if (_deviceState == DEVSTATE_FAILED) return 0;
     int pin = vpin - _firstVpin;
+/**/if(_I2CAddress <= ESP32CAP){        //if ESP32 (CAM), return bank status byte
+      uint8_t pinByte = pin / 8;
+      int     value = _digitalInputStates[pinByte];
+      return  value;  
+/**/}else                               //if not CAM, do normal analogue read 
     for (uint8_t aPin = 0; aPin < _numAnaloguePins; aPin++) {
       if (_analoguePinMap[aPin] == pin) {
         uint8_t _pinLSBByte = aPin * 2;
