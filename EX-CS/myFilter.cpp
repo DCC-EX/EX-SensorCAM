@@ -11,13 +11,13 @@ int CAMbasevPin = SENSORCAM_VPIN0;
 void myFilter(Print * stream, byte & opcode, byte & paramCount, int16_t p[])
 {
   const char cmds[16]={'o','l','a','n','r','s','u','f','i','t','x','w','g','e','m','v'};
-	int16_t param1;
-	int16_t param2;
-  byte param3;
-  unsigned int  i;
+  int16_t param1;
+  int16_t param2;
+  uint8_t param3;
+  unsigned int i;
 
-	if ((opcode == SENSORCAM_OPCODE)||(opcode=='N'))
-	{     
+  if ((opcode == SENSORCAM_OPCODE)||(opcode=='N'))
+  {     
     if (paramCount == 1)  
     { 
       param3 = p[0];      
@@ -63,6 +63,6 @@ void myFilter(Print * stream, byte & opcode, byte & paramCount, int16_t p[])
       } 
       else DIAG(F("Invalid cmd: %d %d %d %d"),p[0],p[1],p[2],p[3]);
     }
-		opcode = '\0';
-	}
+    opcode = '\0';
+  }
 }
