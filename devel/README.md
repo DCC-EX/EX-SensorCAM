@@ -13,7 +13,7 @@ The two preset sensors can not be saved in eprom so need to be set each reboot.
 ### Please verify these fixes and report issues.
 
 1.  No spurious momentary (~20 milliSecond)trips of sensors appearing on CS (but not on CAM).
-2.  No problems with <N R>, <N r>, <Nr 0>, <NR 0> (all identical but sometimes seeming not to re-reference ALL sensors.
+2.  No problems with <UR>, <Ur>, <Nr 0>, <NR 0>, <N R> (all identical but sometimes seeming not to re-reference ALL sensors.
      Note: old myFilter accepts <U> as alternative to <N>
 3.	Satisfactory performance from <NT> <Nt 10> <Nt 44>  
 	 Note: The multiple (repeat) line format <NT 10> (2 up to 30) should give from 2 to 30 repetitions with diff scores capped at 99
