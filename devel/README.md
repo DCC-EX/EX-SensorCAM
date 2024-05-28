@@ -8,6 +8,7 @@ Should work in conjunction with sensorCAM versions ABOVE 0.1.70 (not yet availab
 
 Should ALSO work with earlier releases PROVIDED the user can reserve and preset two sensors in bank 0 for compatibility.
 To get pre 0.1.70 sensorCAM's to work, reserve S06 and set to 0 using o06, and set another to 1 using, for example (lima) l07 say.
+Preset S06 and S07 BEFORE rebooting the CS, and don't try to enable them.  (You can substitute one of S01 through S05 for S07 if that is preferred)
 The two preset sensors can not be saved in eprom so need to be set each reboot.
 
 ### Please verify these fixes and report issues.
