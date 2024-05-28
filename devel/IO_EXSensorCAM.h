@@ -158,7 +158,7 @@ private:
   // Digital input pin configuration, used to enable on EX-IOExpander device and set pullups if requested.
   // Configuration isn't done frequently so we can use blocking I2C calls here, and so buffers can
   // be allocated from the stack to reduce RAM allocation.
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override { \\DIAG(F("_configure() call CAM no/op"));
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override { //DIAG(F("_configure() call CAM no/op"));
     if (paramCount != 1) return false;
   // EXIOExpander code deleted (no use for CAM)
     return true; //at least confirm that CAM is (always) configured (no vpin check!)
@@ -166,7 +166,7 @@ private:
   //*************************															 
   // Analogue input pin configuration, used to enable an EX-IOExpander device.
   // Use I2C blocking calls and allocate buffers from stack to save RAM.
-  int _configureAnalogIn(VPIN vpin) override { \\ DIAG(F("_configureAnalogIn() call CAM no/op")); 
+  int _configureAnalogIn(VPIN vpin) override { // DIAG(F("_configureAnalogIn() call CAM no/op")); 
   // EXIOExpander code deleted (no use for CAM)
     return false;
   }
