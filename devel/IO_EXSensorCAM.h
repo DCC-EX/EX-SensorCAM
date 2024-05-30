@@ -1,4 +1,4 @@
-/*  27/MAY/24 
+/*  30/MAY/24 
  *  © 2022, Peter Cole. All rights reserved.
  *  © 2023, Barry Daniel ESP32 revision 
  *  © 2024, Harald Barth. All rights reserved.
@@ -18,15 +18,18 @@
  *  You should have received a copy of the GNU General Public License
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
 */
-
+bool verPrint=true;
+#define CAMver 200
+// v200 rewrite reduces need for double reads of ESP32 slave CAM. Deleted ESP32CAP. 
+//  Inompatible with pre-v170 sensorCAM, unless set S06 to 0 and S07 to 1 (o06 & l07 say)
 /*
-* The IO_EXSensorCAM.h device driver can integrate with the sensorCAM device and EX-IOExpander devices.
+* The IO_EXSensorCAM.h device driver can integrate with the sensorCAM device.
 * It is an extension on the IO_EXIOExpander.h device driver to include specific needs of the ESP32 sensorCAM 
 * This device driver will configure the device on startup, along with
 * interacting with the device for all input/output duties.
 *
 * To create EX-SensorCAM devices, define them in myHal.cpp:
-* (Note the IOExpander device driver is included by default)
+* (Note the IOExpander device driver is included in CS by default)
 *
 * void halSetup() {
 *   // EXSensorCAM::create(vpin, num_vpins, i2c_address);
@@ -43,9 +46,9 @@
 #ifndef IO_EX_EXSENSORCAM_H
 #define IO_EX_EXSENSORCAM_H
 
-#ifndef ESP32CAP            // may define a higher address CAP for esp32 expanders in config.h
-#define ESP32CAP 0x12       // *** USE ESP32 expander (sensorCAM) <= CAP and Arduino EXIOExpanders above CAP 
-#endif
+//#ifndef ESP32CAP            // may define a higher address CAP for esp32 expanders in config.h
+//#define ESP32CAP 0x12       // *** USE ESP32 expander (sensorCAM) <= CAP and Arduino EXIOExpanders above CAP 
+//#endif
 #define Sp Serial.print
 
 #include "IODevice.h"
@@ -97,7 +100,7 @@ private:
       uint8_t commandBuffer[4] = {EXIOINIT, (uint8_t)_nPins, (uint8_t)(_firstVpin & 0xFF), (uint8_t)(_firstVpin >> 8)};
       status = I2CManager.read(_I2CAddress, receiveBuffer, sizeof(receiveBuffer), commandBuffer, sizeof(commandBuffer));
 /***/ // If ESP32 CAM read again for good data
-      if (_I2CAddress<=ESP32CAP)
+//      if (_I2CAddress<=ESP32CAP)
         status = I2CManager.read(_I2CAddress, receiveBuffer, sizeof(receiveBuffer), commandBuffer, sizeof(commandBuffer));
       if (status == I2C_STATUS_OK) {
         if (receiveBuffer[0] == EXIOPINS) {
@@ -137,7 +140,7 @@ private:
         commandBuffer[0] = EXIOVER;
         status = I2CManager.read(_I2CAddress, versionBuffer, sizeof(versionBuffer), commandBuffer, 1); 
 /***/ // If ESP32 CAM read again for good data
-        if (_I2CAddress<=ESP32CAP)
+//        if (_I2CAddress<=ESP32CAP)
           status = I2CManager.read(_I2CAddress, versionBuffer, sizeof(versionBuffer), commandBuffer, 1);
         if (status == I2C_STATUS_OK) {
           _majorVer = versionBuffer[0];
@@ -158,7 +161,9 @@ private:
   // Digital input pin configuration, used to enable on EX-IOExpander device and set pullups if requested.
   // Configuration isn't done frequently so we can use blocking I2C calls here, and so buffers can
   // be allocated from the stack to reduce RAM allocation.
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override { //DIAG(F("_configure() call CAM no/op"));
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override { 
+    if(verPrint) DIAG(F("_configure() IO_EXSensorCAM v0.%d.%d vpin: %d "), CAMver/100,CAMver%100,vpin);
+    verPrint=false;
     if (paramCount != 1) return false;
   // EXIOExpander code deleted (no use for CAM)
     return true; //at least confirm that CAM is (always) configured (no vpin check!)
@@ -166,7 +171,8 @@ private:
   //*************************															 
   // Analogue input pin configuration, used to enable an EX-IOExpander device.
   // Use I2C blocking calls and allocate buffers from stack to save RAM.
-  int _configureAnalogIn(VPIN vpin) override { // DIAG(F("_configureAnalogIn() call CAM no/op")); 
+  int _configureAnalogIn(VPIN vpin) override { 
+    DIAG(F("_configureAnalogIn() IO_EXSensorCAM vpin %d"),vpin); 
   // EXIOExpander code deleted (no use for CAM)
     return false;
   }
@@ -245,13 +251,13 @@ private:
   int _readAnalogue(VPIN vpin) override {
     if (_deviceState == DEVSTATE_FAILED) return 0;
     int pin = vpin - _firstVpin;
-/**/if(_I2CAddress <= ESP32CAP){        //if ESP32 (CAM), return bank status byte
-      uint8_t pinByte = pin / 8;
+//  if(_I2CAddress <= ESP32CAP){        
+      uint8_t pinByte = pin / 8;      //if ESP32 (CAM), return bank status byte
       int     value = _digitalInputStates[pinByte];
       return  value;  
-/**/}    
+//  }    
   // EXIOExpander code deleted (no use for CAM)
-    return -1;  // pin not found in table
+//  return -1;  // pin not found in table
   }
   //*************************
   // Obtain the correct digital input value
@@ -264,7 +270,8 @@ private:
   }
   //*************************
   // Write digital value.  
-  void _write(VPIN vpin, int value) override { DIAG(F("**_write() call no/op"));
+  void _write(VPIN vpin, int value) override { 
+    DIAG(F("**_write() vpin %d = %d"),vpin,value);
     return ;
   }
   //*************************
@@ -282,7 +289,7 @@ int valu2;
 uint8_t cmdNo;  
 uint8_t status = _i2crb.status;
 
-      if(i2cAddr > ESP32CAP) return 0;  //do nothing if not ESP32 
+//    if(i2cAddr > ESP32CAP) return 0;  //do nothing if not ESP32 
  
  uint8_t sensorCmd = '-';
       cmdNo=outBuff[4];           //(profile)
