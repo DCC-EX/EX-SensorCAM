@@ -13,7 +13,7 @@
 
 import processing.serial.*;
 
-int comNo=1;  //0 for first COM port, may force another port  e.g. 1 for second port.
+int comNo=0;  //0 for first COM port, may force another port  e.g. 1 for second port.
 
 String VER = "SensorCAM RGB565 320 x 240   Monitor v200 for Processing4";
 int BAUD=115200;
