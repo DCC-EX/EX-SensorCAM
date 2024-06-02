@@ -1,5 +1,6 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 200
+#define BCDver 201
+    //v201 Removed CAM v169 compatibility, Experimenting with linear sensos
     //v200 revised EXIORRDD response by adding header.  Is incompatible with CS pre v2.0 ES_IOEXSensorCAM driver
     //v170 'f' cmd output S0%% changed to S%%; #define CAM 700 & cam2 600 (test?)
     //v169 made sensor size configurable using SEN_SIZE (0-7) to insert extra unused pixels.
@@ -44,7 +45,7 @@
 #define EXIOPINS 0xE9
 #define EXIOWRAN 0xEA
 #define EXIOERR  0xEF     //last command erroneous
-  
+#define CAMERR   0xFE     //CAM cmd error header
 #include "esp_camera.h"   //Define i2c interface parameters--- Any difference between “Wire.h” and <Wire.h> ??
 
 #include <Arduino.h> 
@@ -219,7 +220,7 @@ int aRefCtr=-1;         //for 'a' cmd
 char absNo1='0', absNo2='0';
 
 char i2cCmd[64]={'0'};      //string from Master (onReceive)
-byte dataPkt[128]={0xFE};   // prepared packet(s) for i2c (max packet=32 bytes)
+byte dataPkt[128]={CAMERR};   // prepared packet(s) for i2c (max packet=32 bytes)
 boolean newi2cCmd=false;    // flags the presence of a new i2c serial command string for processing  
                                                                                            
 int  wifi=1;                //identify default wifi router (1 or 2)
@@ -254,7 +255,7 @@ char i2cData[64];       //array of sensor status data to send on 't' request
 bool scroll=true;       //if false suppress scrolling output (use 't0')
 int  i2cDatai=0;        //array index
 
-int  threshold=45;      //difference (max Xratio+brightnessRatio) threshold for occupancy
+int  threshold=42;      //difference (max Xratio+brightnessRatio) threshold for occupancy
 int  maxDiff=0;         //exact Xdiff match produces minimum maxDiff of 32 
 int  dFlag=0;           //flag set by d%% to print out (while>0) diff and sample image for bsNo.
 int  dMaxDiff=0;        //saved maxDiff for 'd' cmd.
@@ -308,7 +309,8 @@ void setup() {
      printf("Free heap: %d\n", ESP.getFreeHeap());    //331728  //set Arduino IDE Core Debug Level: "Verbose"
      printf("Total PSRAM: %d\n", ESP.getPsramSize()); //4192139 //should output to SerialMonitor
      printf("Free PSRAM: %d\n", ESP.getFreePsram());  //4.192139 for 4MB PSRAM
-  
+
+  for (i=0;i<80*16*3;i++) Sensor666[i]=10;  //ensure none remain at 0 or risk divide by 0 reboot.
 
   camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
@@ -417,7 +419,7 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
       IFT printf("Doing slaveWrite() for ESP32\n");   //ESP32-S2 and ESP32-C3 don't need slaveWrite()
  char message[64];                               
       snprintf(message, 64, "E%u Packets.", i2cCtr++);//snprintf() puts the text "1 Packets" into char message[64]
-      message[0]=0xFE;
+      message[0]=CAMERR;
       MyWire.slaveWrite((uint8_t *)message, strlen(message)); //preload onRequest buffer
       IFT printf("Done slaveWrite\n");
 #endif                                                        
@@ -1036,10 +1038,16 @@ int bsn;
         }
         printf("(i%%%%,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
         if (SensorStat[bsn])printf("true/OCCUPIED    ");             
-        else                 printf("false/unoccupied ");
+          else              printf("false/unoccupied ");
         printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
         if (SensorTwin[bsn]!=0)printf(" Twin = 0%o ",SensorTwin[bsn]);
         if (pvtThreshold[bsn]!=255)printf(" pvtThreshold= %d ",pvtThreshold[bsn]);
+        int lstepS= pvtThreshold[bsn]&0x7F;  //strip linear flag
+        int lstepR= lstepS>>4;              //linear row step
+        int lstepX = lstepS & 0x0F;
+        if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
+        printf(" Linear sensor: stepR %d stepX %d ",lstepR,lstepX);
+       
         b=0;
         for(j=0;j<48;j++) b += Sensor666[bsn*48+j];
         printf(" brightness A%d\n",b);
@@ -1184,26 +1192,24 @@ int bsn;
         int param1 = get_number(cmdString);  //no number returns 0
         if(param1==00 && cmdString[3]==',') param1=99;
         if(param1 > 30) {
-          if(cmdString[3]==',') { 
+          int comma=0;
+          if(cmdString[4]==',') comma=4;  //situation for linear sensor setup
+          if(cmdString[3]==',') comma=3;
+          if(comma>0){ 
             bsn=00;       
-            if (isDigit(cmdString[1])) bsn = get_bsNo(&cmdString[3]);        
+            if (isDigit(cmdString[1])) bsn = get_bsNo(&cmdString[comma]);  //threshold must be 01-99      
             if(bsn > 0) pvtThreshold[bsn]=byte(param1);   
             if(param1 == 99) {pvtThreshold[bsn]=255;param1=00;}      // clear pvtThreshold
             printf("(t##,%%%%) setting pvtThreshold to %d for sensor S%o \n",param1,bsn);
-          }          
+          }
+                    
           else threshold=param1;  // will be permanent only use 'e' command (along with sensor changes and nLED)
         }
         else if(param1==1) {
               scroll=!scroll;  //use to hide scrolling status data.
               if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
         }
-        printf("(t##) Threshold: trip point set to %d\n(t1)will toggle scroll data ON/OFF\n", threshold);
-/*       if(cmdString[3]==',') { 
-          error = get_number(&cmdString[3]);  //get second parameter
-          if(error > 0) minSensors=error-1;   // can't set minSensors to 0 otherwise
-          printf("(t##,##) setting minSensors to 0%o \n",minSensors);
-        } 
-*/
+        printf("(t##) Threshold: trip point set to %d\n", threshold);
         wait();        
         break;
       }
@@ -1659,17 +1665,33 @@ int r;     //row count
 int i;     //pixel count 
 int j;     //destination offset 
     for(sn=0;sn<80;sn++){    //decode all 80 Sensor images  
-        //for speed, might modify so only active sensors are decoded but this function only takes <400uSec 
-      iPtr1=imageData+Sensor[sn];   //point to start of sensor
-      for (r=0;r<4;r++) {           //do for four consecutive image lines/rows
-        if(r<2) iPtr=iPtr1+r*pitch;         //point to LHS of sensor
-        else    iPtr=iPtr1+(r+SEN_SIZE)*pitch;
-        j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)
-        for (i=0;i<4;i++){          //decode 4 pixels per sensor row
-          if(i<2) decode565(iPtr,long(i*2),&f666[j+i*3]);
-          else    decode565(iPtr,long((i+SEN_SIZE)*2),&f666[j+i*3]);
+     if(SensorActive[sn]){ //for speed, only active sensors decoded. This function only takes <400uSec for 80
+       iPtr1=imageData+Sensor[sn];   //point to start of sensor
+       if((pvtThreshold[sn]<0x80)||(pvtThreshold[sn]==255)){  //else linear sensor
+         for (r=0;r<4;r++) {           //do for four consecutive image lines/rows
+           if(r<2) iPtr=iPtr1+r*pitch;         //point to LHS of sensor
+           else    iPtr=iPtr1+(r+SEN_SIZE)*pitch;
+           j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)
+           for (i=0;i<4;i++){          //decode 4 pixels per sensor row
+             if(i<2) decode565(iPtr,long(i*2),&f666[j+i*3]);
+             else    decode565(iPtr,long((i+SEN_SIZE)*2),&f666[j+i*3]);
+           }
+         }
+      }else {   //treat as linear sensor
+        int lstepS= pvtThreshold[sn]&0x7F;  //strip linear flag
+        int lstepR= lstepS>>4;              //linear row step
+        int lstepX = lstepS & 0x0F;
+        if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
+        for (r=0;r<4;r++) {           //do for four consecutive image (2x2) blobs 
+          iPtr=iPtr1+r*(lstepR*pitch+lstepX*2);
+          j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)        
+          for (i=0;i<2;i++) {           //do for group of four image pixels
+            decode565(iPtr,long(pitch*i),&f666[j+i*6]);   //a row pair
+            decode565(iPtr,long(pitch*i+2),&f666[j+i*6+3]); 
+          }
         }
       }    
+     }
     }
     return true;            //return converted (or number of converted active sensors?)       
 }       // ***************************** 
@@ -1721,7 +1743,7 @@ bool processDiff(int bsn){
           if (i2cDatai<56)i2cDatai += 2;        //increment provided within buffer limit(58) (may corrupt last bsn)   
         }
         Threshold = pvtThreshold[bsn];
-        if (Threshold==255) Threshold=threshold;
+        if (Threshold>=128) Threshold=threshold;  //may hold a linear sensor sizing
         if (bpd < Threshold) {    //low diff thinks unoccupied
         
           if(SensorHiCount[bsn]>0){          //If had some recent hi's, update histogram
@@ -1918,7 +1940,7 @@ void i2cRequest(){                             //function to handle i2c request 
              dataPkt[i]=dataPkt[i+32];dataPkt[i+32]=dataPkt[i+64];dataPkt[i+64]=dataPkt[i+96];
           }break; 
         default:             //if invalid onReceive Cmd, onRequest returns dud i2cCmd as data packet
-          MyWire.write(0xFE);       //return header byte as Error flag 0xFE(254.)    
+          MyWire.write(CAMERR);       //return header byte as Error flag 0xFE(254.)    
           MyWire.write(i2cCmd);     //send back (preload) old ASCII received data packet. 
           AS.print("onRequest dud command preloaded. ");AS.println(i2cCmd[0],HEX);
        } 

@@ -19,7 +19,8 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
 */
 bool verPrint=true;
-#define CAMver 200
+#define CAMver 201
+// v201 deleted partial compatibility with CAM pre v171
 // v200 rewrite reduces need for double reads of ESP32 slave CAM. Deleted ESP32CAP. 
 //  Inompatible with pre-v170 sensorCAM, unless set S06 to 0 and S07 to 1 (o06 & l07 say)
 /*
@@ -42,13 +43,13 @@ bool verPrint=true;
 *
 * I2C packet size of 32 bytes (in the Wire library).
 */
-# define DIGITALREFRESH 50000UL              // min uSec between digital reads EXIORDD
+# define DIGITALREFRESH 25000UL              // min uSec between digital reads EXIORDD
 #ifndef IO_EX_EXSENSORCAM_H
 #define IO_EX_EXSENSORCAM_H
 
-//#ifndef ESP32CAP            // may define a higher address CAP for esp32 expanders in config.h
-//#define ESP32CAP 0x12       // *** USE ESP32 expander (sensorCAM) <= CAP and Arduino EXIOExpanders above CAP 
-//#endif
+
+#define CAMERR 0xEF
+ 
 #define Sp Serial.print
 
 #include "IODevice.h"
@@ -101,7 +102,7 @@ private:
       status = I2CManager.read(_I2CAddress, receiveBuffer, sizeof(receiveBuffer), commandBuffer, sizeof(commandBuffer));
 /***/ // If ESP32 CAM read again for good data
 //      if (_I2CAddress<=ESP32CAP)
-        status = I2CManager.read(_I2CAddress, receiveBuffer, sizeof(receiveBuffer), commandBuffer, sizeof(commandBuffer));
+      status = I2CManager.read(_I2CAddress, receiveBuffer, sizeof(receiveBuffer), commandBuffer, sizeof(commandBuffer));
       if (status == I2C_STATUS_OK) {
         if (receiveBuffer[0] == EXIOPINS) {
           _numDigitalPins = receiveBuffer[1];
@@ -196,17 +197,17 @@ private:
         
             int error = processIncomingPkt( _CAMresponseBuff, _CAMresponseBuff[0]);   // '@' 'i' 'm' 't' etc
             if (error>0) DIAG(F("CAM packet header not recognised 0x%x"),_CAMresponseBuff[0]);               
-        }else{ 
+        }else{ // DIAG(F("CAM packet[0](0x%x) not recognised, assumed data array. packet[1]:0x%x,Bytes:%d"),_CAMresponseBuff[0],_CAMresponseBuff[1],digitalBytesNeeded );
             //treat it like version 170 sensorCAM data array (no header). Only works if S06 preset OFF & another ON using CAM cmd's o06 l07 say 
             //versions of sensorCAM.h after 170 should return header of EXIORDD (0xE6) or '@' (0x40)for sensor state array
           if (_CAMresponseBuff[0]!=0){
-            for(int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = _CAMresponseBuff[i];  //memcpy??
+             DIAG(F("i2c header not valid 'alpha' cmd 0x%X 0x%X"),_CAMresponseBuff[0],_CAMresponseBuff[1] ); 
+    //        for(int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = _CAMresponseBuff[i];  //memcpy??
           }else{     //timeout ?  Ignore?
-            // DIAG(F("CAM packet[0](0x%x) not recognised, assumed data array. packet[1]:0x%x,Bytes:%d"),_CAMresponseBuff[0],_CAMresponseBuff[1],digitalBytesNeeded );
+
           }
         }
       }  else   reportError(status, false);   // report eror but don't go offline.
-
       _readState = RDS_IDLE;
     }      
 
@@ -275,8 +276,10 @@ private:
     return ;
   }
   //*************************
-/***/ // ESP32 requires special code to get valid data and interpret appropriately
-  // Check if ESP32, and if so, read again and re-establish EXIORDD while trashing surplus junk packet
+  // ESP32 requires special code to get valid data and interpret appropriately
+  // i2cAddr of ESP32 CAM
+  // rBuff   buffer for return packet 
+  // inbytes number of bytes to request from CAM 
   int ioESP32(uint8_t i2cAddr,uint8_t *rBuf,int inbytes,uint8_t *outBuff,int outbytes) {
     // only for commands translated or responding with EXIORDY i.e. EXIODPUP(E2) EXIOWRD(E5) EXIOENAN(E7)
     // these sensorCAM commands can invoke a detailed return data packet
@@ -331,7 +334,7 @@ uint8_t status = _i2crb.status;
         reportError(status); return status;}
       return 0;  // 0 for no error != 0 for error number.
    }
-   //*************************
+  //*************************
 //function to read and interpret packet from sensorCAM.ino
 //i2cAddr to identify CAM# (if # >1)
 //rBuf contains packet of up to 32 bytes possibly with (ascii) cmd in rBuf[0]
@@ -344,10 +347,13 @@ uint8_t status = _i2crb.status;
    //if (rBuf[0] != EXIORDY) {   //perhaps got back ascii cmd
    //   if (rBuf[0] == sensorCmd){
           switch (sensorCmd){
-            case EXIORDD:   //response to request for digital table    //could go in processIncomingPkt()
-              for (int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = _CAMresponseBuff[i+1];
+            case EXIORDD:   //response to request for digital table    
+              for (int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = rBuf[i+1];
               break;   
             case EXIORDY:   //some commands give acknowledgement only
+              break;
+            case CAMERR:  //error code from CAM
+              DIAG(F("CAM cmd error 0xFE 0x%X"),rBuf[1]);
               break;
             case'i':    //information from i%%
 			        k=256*rBuf[5]+rBuf[4];
@@ -379,8 +385,8 @@ uint8_t status = _i2crb.status;
               } 
               Serial.print('\n');
               break;
-            default:   //until CAM produces '@' header, default to move EXIORDD output fmt. into outBuff?
-			        DIAG(F("CAM packet header (0x%x) not valid"),rBuf[0]);
+            default:   //until CAM produces '@' header, CAM defaults to move EXIORDD output fmt. into outBuff?
+			        DIAG(F("CAM packet header not valid (0x%x) (0x%x) (0x%x)"),rBuf[0],rBuf[1],rBuf[2]);
           }
           return 0;  
   }
@@ -411,7 +417,7 @@ uint8_t status = _i2crb.status;
       errors = ioESP32(_I2CAddress, _CAMresponseBuff, 32 , servoBuffer, 7);   			    			   
       if (errors==0) return;
       else {DIAG(F("ioESP32 error %d header 0x%x"),errors,_CAMresponseBuff[0]);  
-        if (_CAMresponseBuff[0] != EXIORDY) {
+        if (_CAMresponseBuff[0] != EXIORDY) {      //can't be sure what is inBuff[0] !
           DIAG(F("Vpin %u cannot be used as a servo/PWM pin"), (int)vpin);
         }
       }
