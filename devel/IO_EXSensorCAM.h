@@ -20,7 +20,7 @@
 */
 bool verPrint=true;
 #define CAMver 201
-// v201 deleted partial compatibility with CAM pre v171
+// v201 deleted code for compatibility with CAM pre v171. Needs CAM ver201 with o06 only
 // v200 rewrite reduces need for double reads of ESP32 slave CAM. Deleted ESP32CAP. 
 //  Inompatible with pre-v170 sensorCAM, unless set S06 to 0 and S07 to 1 (o06 & l07 say)
 /*
@@ -57,7 +57,8 @@ bool verPrint=true;
 #include "DIAG.h"
 #include "FSH.h"
 size_t digitalBytesNeeded;
-uint8_t _CAMresponseBuff[32];
+uint8_t _CAMresponseBuff[34];
+int countB=0;
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 /*
  * IODevice subclass for EX-SensorCAM.
@@ -181,27 +182,26 @@ private:
   // Main loop, collect both digital and analogue pin states continuously (faster sensor/input reads)
   void _loop(unsigned long currentMicros) override {
     if (_deviceState == DEVSTATE_FAILED) return;    // If device failed, return
-
-    // Request block is used for "analogue" (cmd. data) and digital reads from the sensorCAM, which are performed
-    // on a cyclic basis.  Writes are performed synchronously as and when requested.
+      // Request block is used for "analogue" (cmd. data) and digital reads from the sensorCAM, which are performed
+      // on a cyclic basis.  Writes are performed synchronously as and when requested.
 
     if (_readState != RDS_IDLE) {                  //expecting a return packet
       if (_i2crb.isBusy()) return;                 // If I2C operation still in progress, return
-
       uint8_t status = _i2crb.status;
       if (status == I2C_STATUS_OK) {               // If device request ok, read input data
 
-        //there should be a packet in _CAMresponseBuff[32]     
+        //there should be a packet in _CAMresponseBuff[32] 
+/***/ //  countB+=1; Sp(_CAMresponseBuff[0],HEX);Sp(' '); if (countB>40){countB=0;Sp('\n');}
+            
         if ((_CAMresponseBuff[0] & 0x40) != 0) {   //response seems to have ascii cmd header (bit6 set) (o06)
-                      // process received values according to header ('@', 't', 'm','i' etc)
-        
+                      // process received values according to header ('@', 't', 'm','i' etc)     
             int error = processIncomingPkt( _CAMresponseBuff, _CAMresponseBuff[0]);   // '@' 'i' 'm' 't' etc
-            if (error>0) DIAG(F("CAM packet header not recognised 0x%x"),_CAMresponseBuff[0]);               
-        }else{ // DIAG(F("CAM packet[0](0x%x) not recognised, assumed data array. packet[1]:0x%x,Bytes:%d"),_CAMresponseBuff[0],_CAMresponseBuff[1],digitalBytesNeeded );
-            //treat it like version 170 sensorCAM data array (no header). Only works if S06 preset OFF & another ON using CAM cmd's o06 l07 say 
-            //versions of sensorCAM.h after 170 should return header of EXIORDD (0xE6) or '@' (0x40)for sensor state array
-          if (_CAMresponseBuff[0]!=0){
-             DIAG(F("i2c header not valid 'alpha' cmd 0x%X 0x%X"),_CAMresponseBuff[0],_CAMresponseBuff[1] ); 
+            if (error>0) DIAG(F("CAM packet header not recognised 0x%x"),_CAMresponseBuff[0]);
+                           
+        }else{ // Header not valid - mostly replaced by bank 0 data.  To avoid any bad response latch S06 to 0 ( o06 ) 
+            //versions of sensorCAM.h after 170 should return header of EXIORDD(0xE6) or '@'(0x40) with sensor state array
+   /***/    if (_CAMresponseBuff[0]!=0){ Serial.print(_CAMresponseBuff[0],HEX);Serial.print('~');
+    //        DIAG(F("i2c header not valid")); 
     //        for(int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = _CAMresponseBuff[i];  //memcpy??
           }else{     //timeout ?  Ignore?
 
@@ -350,9 +350,9 @@ uint8_t status = _i2crb.status;
             case EXIORDD:   //response to request for digital table    
               for (int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = rBuf[i+1];
               break;   
-            case EXIORDY:   //some commands give acknowledgement only
+            case EXIORDY:   //some commands give back acknowledgement only
               break;
-            case CAMERR:  //error code from CAM
+            case CAMERR:  //cmd format error code from CAM
               DIAG(F("CAM cmd error 0xFE 0x%X"),rBuf[1]);
               break;
             case'i':    //information from i%%
@@ -385,26 +385,27 @@ uint8_t status = _i2crb.status;
               } 
               Serial.print('\n');
               break;
-            default:   //until CAM produces '@' header, CAM defaults to move EXIORDD output fmt. into outBuff?
-			        DIAG(F("CAM packet header not valid (0x%x) (0x%x) (0x%x)"),rBuf[0],rBuf[1],rBuf[2]);
+            default:   //header not a listed character
+			        Serial.print(rBuf[0],HEX);DIAG(F("CAM packet header not valid (0x%x) (0x%x) (0x%x)"),rBuf[0],rBuf[1],rBuf[2]);
+              return 1;
           }
           return 0;  
   }
   //*************************											  
   // Write analogue (command) values.  Write the parameters to the sensorCAM
-  void _writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration) override {
+  //   writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration)
+  void _writeAnalogue(VPIN vpin, int value, uint8_t parameter1, uint16_t parameter2) override {
     uint8_t servoBuffer[7];
-    int errors;
-
+    int errors=0;
     if (_deviceState == DEVSTATE_FAILED) return;
     int pin = vpin - _firstVpin;
     servoBuffer[0] = EXIOWRAN;
     servoBuffer[1] = pin;
     servoBuffer[2] = value & 0xFF;
     servoBuffer[3] = value >> 8;
-    servoBuffer[4] = profile;
-    servoBuffer[5] = duration & 0xFF;
-    servoBuffer[6] = duration >> 8;
+    servoBuffer[4] = parameter1;
+    servoBuffer[5] = parameter2 & 0xFF;
+    servoBuffer[6] = parameter2 >> 8;
 
       if(servoBuffer[4]==249){   //then 't' cmd
         if(value<31) {   //repeated calls if param < 31
@@ -445,7 +446,7 @@ uint8_t status = _i2crb.status;
   uint8_t _majorVer = 0;
   uint8_t _minorVer = 0;
   uint8_t _patchVer = 0;
-  uint8_t _savedCmd[7];              //for repeat 't' command
+  uint8_t _savedCmd[8]; //for repeat 't' command
   uint8_t* _digitalInputStates  = NULL;
   uint8_t* _tempBuf = NULL;          //_analogueInputStates = NULL;
   uint8_t _readCommandBuffer[8];

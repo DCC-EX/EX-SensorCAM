@@ -1,6 +1,6 @@
 //sensorCAM Alpha release                                                                                 limit >|
 #define BCDver 201
-    //v201 Removed CAM v169 compatibility, Experimenting with linear sensos
+    //v201 Experimenting with row-wise linear sensos S90+  SEN_SIZE 8
     //v200 revised EXIORRDD response by adding header.  Is incompatible with CS pre v2.0 ES_IOEXSensorCAM driver
     //v170 'f' cmd output S0%% changed to S%%; #define CAM 700 & cam2 600 (test?)
     //v169 made sensor size configurable using SEN_SIZE (0-7) to insert extra unused pixels.
@@ -1041,13 +1041,14 @@ int bsn;
           else              printf("false/unoccupied ");
         printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
         if (SensorTwin[bsn]!=0)printf(" Twin = 0%o ",SensorTwin[bsn]);
-        if (pvtThreshold[bsn]!=255)printf(" pvtThreshold= %d ",pvtThreshold[bsn]);
-        int lstepS= pvtThreshold[bsn]&0x7F;  //strip linear flag
-        int lstepR= lstepS>>4;              //linear row step
-        int lstepX = lstepS & 0x0F;
-        if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
-        printf(" Linear sensor: stepR %d stepX %d ",lstepR,lstepX);
-       
+        if (pvtThreshold[bsn]!=255){ printf(" pvtThreshold= %d ",pvtThreshold[bsn]);
+          if(pvtThreshold[bsn]>=128){
+            int lstepR= pvtThreshold[bsn]&0x7F>>4;              //linear row step
+            int lstepX = pvtThreshold[bsn]&0x0F;
+            if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
+            printf(" Linear sensor: stepR %d stepX %d ",lstepR,lstepX);
+          }
+        }
         b=0;
         for(j=0;j<48;j++) b += Sensor666[bsn*48+j];
         printf(" brightness A%d\n",b);
@@ -1094,7 +1095,7 @@ int bsn;
         break;             
       }
       case 'm':{      //m$;    Minimum: sequential frames to trigger Occupied status (default 2)
-                      //m$,##; Optional set Max sensors to ## (decimal)
+                      //m$,##; Optional set maxSensors to ## (decimal)
         if (isDigit(cmdString[1])) {   //default value for min2flip = 2
           b = cmdString[1]-0x30;               //ignore any further text after m# 
           if(b>0) min2flip = b;                //only allow 1-9        
@@ -1190,7 +1191,8 @@ int bsn;
       }     
       case 't':{      //t_:  Set threshold 31 to 250 for sensor "trip", send value to USB (& i2c)
         int param1 = get_number(cmdString);  //no number returns 0
-        if(param1==00 && cmdString[3]==',') param1=99;
+        if((param1==00) && (cmdString[3]==',')) param1=99; //t0,%% does nothing, t00,%% clears pvtThreshold[%%]
+        Serial.println(param1);
         if(param1 > 30) {
           int comma=0;
           if(cmdString[4]==',') comma=4;  //situation for linear sensor setup
@@ -1667,7 +1669,7 @@ int j;     //destination offset
     for(sn=0;sn<80;sn++){    //decode all 80 Sensor images  
      if(SensorActive[sn]){ //for speed, only active sensors decoded. This function only takes <400uSec for 80
        iPtr1=imageData+Sensor[sn];   //point to start of sensor
-       if((pvtThreshold[sn]<0x80)||(pvtThreshold[sn]==255)){  //else linear sensor
+       if((pvtThreshold[sn]<0x80)||(pvtThreshold[sn]==255)){  //not linear sensor
          for (r=0;r<4;r++) {           //do for four consecutive image lines/rows
            if(r<2) iPtr=iPtr1+r*pitch;         //point to LHS of sensor
            else    iPtr=iPtr1+(r+SEN_SIZE)*pitch;
@@ -1678,9 +1680,8 @@ int j;     //destination offset
            }
          }
       }else {   //treat as linear sensor
-        int lstepS= pvtThreshold[sn]&0x7F;  //strip linear flag
-        int lstepR= lstepS>>4;              //linear row step
-        int lstepX = lstepS & 0x0F;
+        int lstepR =(pvtThreshold[sn]&0x7F)>>4;              //linear row step
+        int lstepX = pvtThreshold[sn]&0x0F;
         if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
         for (r=0;r<4;r++) {           //do for four consecutive image (2x2) blobs 
           iPtr=iPtr1+r*(lstepR*pitch+lstepX*2);
