@@ -1,4 +1,4 @@
-/*  30/MAY/24 
+/*  4/JUN/24 
  *  © 2022, Peter Cole. All rights reserved.
  *  © 2023, Barry Daniel ESP32 revision 
  *  © 2024, Harald Barth. All rights reserved.
@@ -200,7 +200,7 @@ private:
                            
         }else{ // Header not valid - mostly replaced by bank 0 data.  To avoid any bad response latch S06 to 0 ( o06 ) 
             //versions of sensorCAM.h after 170 should return header of EXIORDD(0xE6) or '@'(0x40) with sensor state array
-   /***/    if (_CAMresponseBuff[0]!=0){ Serial.print(_CAMresponseBuff[0],HEX);Serial.print('~');
+ /***/    if (_CAMresponseBuff[0]!=0){ Serial.print(_CAMresponseBuff[0],HEX);Serial.print('~'); countB++; if (countB>40){countB=0;Sp('\n');}
     //        DIAG(F("i2c header not valid")); 
     //        for(int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = _CAMresponseBuff[i];  //memcpy??
           }else{     //timeout ?  Ignore?
@@ -394,7 +394,7 @@ uint8_t status = _i2crb.status;
   //*************************											  
   // Write analogue (command) values.  Write the parameters to the sensorCAM
   //   writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration)
-  void _writeAnalogue(VPIN vpin, int value, uint8_t parameter1, uint16_t parameter2) override {
+  void _writeAnalogue(VPIN vpin, int value, uint8_t param3, uint16_t param4) override {
     uint8_t servoBuffer[7];
     int errors=0;
     if (_deviceState == DEVSTATE_FAILED) return;
@@ -403,9 +403,16 @@ uint8_t status = _i2crb.status;
     servoBuffer[1] = pin;
     servoBuffer[2] = value & 0xFF;
     servoBuffer[3] = value >> 8;
-    servoBuffer[4] = parameter1;
-    servoBuffer[5] = parameter2 & 0xFF;
-    servoBuffer[6] = parameter2 >> 8;
+    servoBuffer[4] = param3;        //command code
+    servoBuffer[5] = param4 & 0xFF;
+    servoBuffer[6] = param4 >> 8;
+      if(param3==239){   //then 'b'(b#) cmd - can totally deal with that here. (except can't do b$,# (brightSF))
+        uint8_t b=_digitalInputStates[value];
+        char str[] = "11111111";
+        for (int i=0;i<8;i++) if(((b<<i)&0x80) == 0) str[i]='0';
+        DIAG(F("(b $)bank: %d occupancy status byte: 0x%x (sensors S%d7->0) %s"), value,b,value,str ); 
+        return;
+      }
 
       if(servoBuffer[4]==249){   //then 't' cmd
         if(value<31) {   //repeated calls if param < 31

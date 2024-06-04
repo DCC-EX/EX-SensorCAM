@@ -2018,12 +2018,7 @@ const int numDigBytes=(NUMdigPins+7)>>3;
       case EXIODPUP:                  //EXIODPUP(0xE2) pin pullup     USE (1) for 'a' or (0) 'r'  
         datapk[0]=EXIORDY;        
 //        MyWire.write(datapk,1);      //preload onRequest buffer      // ######
- /*       if (i2cCmdBuf[2]==1) i2cCmdBuf[0]='a';
-        else i2cCmdBuf[0]='r';     
-        i2cCmdBuf[2]=0x30+(i2cCmdBuf[1]&&0x07);    //sensor
-        i2cCmdBuf[1]=0x30+(i2cCmdBuf[1]>>3);        //block 
-        return 3;
- */     return 0;   
+        return 0;   
 
 /*      case EXIORDAN:                    //EXIORDAN(0xE4) Read full set analogue values (@20Hz)
         for(int i=0;i<2*NUManalogPins;i+=2) {datapk[i]=i;datapk[i+1]=0;}  // test pattern only for now
@@ -2032,7 +2027,6 @@ const int numDigBytes=(NUMdigPins+7)>>3;
  */             
       case EXIORDAN:                  //EXIORDAN(0xE4) Read full set analogue values (@20Hz)**duplicate RDD**
       case EXIORDD:                   //EXIORDD(0xE6)read ALL digital bits (@100Hz)
-        for (int a=0;a<2*NUManalogPins;a+=2){datapk[a]=byte(a); datapk[a+1]=0;}        //dummy values for now
         datapk[0] = EXIORDD;              //new header (ver 200+)
         for (int b=0;b<numDigBytes;b++)  datapk[b+1] =  SensorBlockStat[b];
    //     MyWire.write(datapk,(NUMdigPins+7)>>3);    //preload onRequest buffer      // ######     
