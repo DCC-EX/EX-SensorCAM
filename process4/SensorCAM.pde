@@ -1,20 +1,21 @@
 
-/*
+/* 31/5/24  version 200
  *
- * Serial Monitor 
- * by Barry DAniel
+ * sensorCAM Serial Monitor 
+ * by Barry Daniel
  * 
  * Lets you do simple edits of a command line
  * Sends a line out the serial port when Enter key pressed
- * listens for bytes received, and displays their value. 
+ * listens for bytes received, and displays their value.
+ * sensorCAM command enhancements for imaging capability
  * 1/4/2023
  */
 
 import processing.serial.*;
 
-int comNo=0;  //0 for first COM port, may force another port  e.g. 1 for second port.
+int comNo=1;  //0 for first COM port, may force another port  e.g. 1 for second port.
 
-String VER = "SensorCAM RGB565 320 x 240   Monitor Processing4 v31 for P4.3 ";
+String VER = "SensorCAM RGB565 320 x 240   Monitor v200 for Processing4";
 int BAUD=115200;
 
 Serial myPort;      // The serial port
@@ -22,8 +23,8 @@ int whichKey = 10;  //'\n'  Variable to hold keystoke values
 int inByte = -1;    // Incoming serial data
 int chr=0;         
 //String cmd="12345678901234567890";    //20 character command buffer
-char inlin[] = new char[80];     //80 character command buffer
-//char posn[] = new char[20];
+char inLine[] = new char[80];     //80 character command buffer
+
 int i=0;
 int j;
 boolean echo=false;
@@ -34,7 +35,7 @@ PImage mouseCursor;
 int roi;
 
 boolean newS = false;
-int coX=-1, coY=-1;
+int coordX=-1, coordY=-1;
 int Wval=240; //240 max;      //my Processing command default values
 int Xval=0;
 int Yrow=0;
@@ -47,10 +48,12 @@ int  mirrorY=1;
 int inPtr = 0;
 int readPtr = 0;
 char[] inBuf = new char[1024];         //Buffer for image data from USB
-int inPtrMsk = 0x3FF;                      //limits size of ring.
+int inPtrMsk = 0x3FF;                  //limits size of ring.
 int timeoutMax = 120; //mSec
 int timeout=timeoutMax;        //start timeout counter
 
+int savedWval=240;
+int arow=1;
 
 void setup() {
 
@@ -122,29 +125,29 @@ void draw() {      // loops continuously
     print(char(inByte));
   }
   
-  if ((inlin[0] == 'k') || (inlin[0] == 'a')){    //set cursor for sensor creation
+  if ((inLine[0] == 'k') || (inLine[0] == 'a')){    //set cursor for sensor creation
     if (i>=3 && mouseY <  500 && mouseY > 30 && mouseX >10) {
       cursor(HAND); // cursor(mouseCursor,0,0);
       newS = true;
-      if (coX >= 0) {          //create command for new sensor
+      if (coordX >= 0) {          //create command for new sensor
         print ("make sensor");
         i=3;                     //always add after "a##"
-        inlin[i]=','; i++;    
-        String stn =str(coY);    //row
-        char[] posn = stn.toCharArray(); //str.toCharArray();
-        arrayCopy(posn,0,inlin,i,posn.length);
+        inLine[i]=','; i++;    
+        String strng =str(coordY);    //row
+        char[] posn = strng.toCharArray(); //str.toCharArray();
+        arrayCopy(posn,0,inLine,i,posn.length);
         i=i+posn.length;
-        inlin[i]=','; i++;
-        stn = str(coX);
-        posn = stn.toCharArray();
-        arrayCopy(posn,0,inlin,i,posn.length);
+        inLine[i]=','; i++;
+        strng = str(coordX);
+        posn = strng.toCharArray();
+        arrayCopy(posn,0,inLine,i,posn.length);
         i=i+posn.length;    
-        coX=-1;                  //don't let it repeat
+        coordX=-1;                  //don't let it repeat
       
         fill(200);                    //clear and rewrite command line
         rect(45,512,605,25); 
         fill(0);
-        for(int j=0;j<i;j++)  text(inlin[j],50+j*10,530);
+        for(int j=0;j<i;j++)  text(inLine[j],50+j*10,530);
         text(char(1),50+i*10,530);    //try to add a claytons "cursor"      
       }
     }
@@ -159,19 +162,29 @@ void draw() {      // loops continuously
     if(chr > 0x7F || chr < 0) chr=0;       //ignore 
     else{                                //key is ASCII
        if(echo) print(char(chr));
-       inlin[i] = char(chr);
+       inLine[i] = char(chr);
 
-       if (inlin[i] == 10) {           // LF so send command including LF
-         if (myCommand(inlin[0],i)) {  //identify and process special commands W X Y Z
+       if (inLine[i] == 10) {           // LF so send command including LF
+         if (myCommand(inLine[0],i)) {  //identify and process special commands W X Y Z
            print("done myCmd: ");
-           for(int j=0;j<i+1;j++) print(inlin[j]);   //prints myCmd AFTER command execution.
+           for(int j=0;j<i+1;j++) print(inLine[j]);   //prints myCmd AFTER command execution.
          } else {            //send command to CAM
-           println(" ");
-           for (int j=0;j<i+1;j++) myPort.write(inlin[j]);
+           if(inLine[0]=='a') arow=getNum(4);         //save 'a' second parameter
+           println(" ");      
+           for (int j=0;j<i+1;j++) myPort.write(inLine[j]);
+           if((inLine[0]== 'a')&&(i>7)) {        //new sensor reated
+             delay(120);
+             savedWval=Wval;
+             Wval=10;
+             Yrow=arow-2;
+             print(arow);
+             executeYcmd();            
+             Wval=savedWval;
+           }
          }
          i=0;
        }else{                      //NOT linefeed
-         if (inlin[i] == 8) {      // BS correction
+         if (inLine[i] == 8) {     // BS correction
            if( i>0 ) i--;   
          }else{
            if( i < 39) i++;        //limit line length
@@ -183,7 +196,7 @@ void draw() {      // loops continuously
        rect(45,512,605,25);
        fill(0);
        for(int j=0;j<i;j++){  
-         text(inlin[j],50+j*10,530);
+         text(inLine[j],50+j*10,530);
        } 
        text(char(1),50+i*10,530);    //try to add a claytons "cursor"
     }
@@ -220,7 +233,7 @@ void keyPressed() {
 boolean myCommand(char cmd,int nch) { 
  int red=0;
  int char3=-1;
-char request[] = new char[80];     //80 character request buffer
+ char request[] = new char[80];     //80 character request buffer
 
 
  switch (cmd) {
@@ -233,20 +246,20 @@ char request[] = new char[80];     //80 character request buffer
      return true;
      
    case 'W':            //get useful image strip width (height)
-     Wval = getNum();   //no need to send anything to CAM as only for # of repeats of 'y'
+     Wval = getNum(1);   //no need to send anything to CAM as only for # of repeats of 'y'
      if(Wval < 0) Wval=240;
      ;  //try a default 
      return true;
   
    case 'Z':            //get useful image width
-     Zlength = getNum();
+     Zlength = getNum(1);
      if(Zlength < 0) Zlength=320;  //try default row length
      sendCmd('z',Zlength);
      println(Zlength);
      return true;  
    
    case 'X':            //get top left corner of useful image
-     Xval = getNum();
+     Xval = getNum(1);
      if(Xval < 0) Xval=0;
      sendCmd('x',Xval);
      println(Xval);
@@ -254,9 +267,19 @@ char request[] = new char[80];     //80 character request buffer
      
    case 'Y':            //get coordinate y, and fill image
      println("*****YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY***** start of Y");
-     Yrow = getNum();                //from command line
+     Yrow = getNum(1);                //from command line
      if(Yrow < 0) Yrow=0;
      println(Yrow);
+     return executeYcmd();
+         
+   default:     //no Process commands recognised
+     return false;
+  
+ }    //end switch
+}     //end myCommand()   
+     
+boolean executeYcmd() {   
+     //fetch an image strip at Yrow (Wval rows wide,starting at Xval column, ending after Zlength pixels)
      timeout=120;           //set big timeout for first 'y'
      int Ymax=min(240,Yrow+Wval);    // test/limit parameters
      int Xmax=min(320,Xval+Zlength); //   assume x & z already sent to CAM by X & Z cmds  Will get them back in headers 
@@ -360,22 +383,19 @@ char request[] = new char[80];     //80 character request buffer
      //end of for (roi<<Ymax)
      myPort.write("yy\n");            //send "yy" to resume normal CAM frame sampling
      return true;                       
-         
-   default:     //no Process commands recognised
-     return false;
-  }    //end switch
-}     //end myCommand()
+}         
 
 
-int getNum(){    //get a 3 digit number (0-999) from inline 
+
+int getNum(int c){    //get a 3 digit number (0-999) from inLine 
                  // returns -1 if invalid number
   int num=-1;
-      if(chIsDigit(inlin[1])>=0) num = chIsDigit(inlin[1]); 
-      else{ println("getNum(): invalid number ");
+      if(chIsDigit(inLine[c])>=0) num = chIsDigit(inLine[c]); 
+      else{ if(c<4)println("getNum(): invalid number ");
             return num; }
-      if(chIsDigit(inlin[2])>=0) num = num*10+chIsDigit(inlin[2]);
+      if(chIsDigit(inLine[c+1])>=0) num = num*10+chIsDigit(inLine[c+1]);
       else return num;
-      if(chIsDigit(inlin[3])>=0) num = num*10+chIsDigit(inlin[3]);
+      if(chIsDigit(inLine[c+2])>=0) num = num*10+chIsDigit(inLine[c+2]);
       return num;
 }
 
@@ -427,10 +447,10 @@ int waitForCh(){
 }
 void mousePressed(){
   if (newS){
-    coX=(mouseX-10)/2;
-    coY=(mouseY-30)/2; 
-//    print("set one at row=");print(coY);
-//    print(" x=");  println(coX);
+    coordX=(mouseX-10)/2;
+    coordY=(mouseY-30)/2; 
+//    print("set one at row=");print(coordY);
+//    print(" x=");  println(coordX);
   }
   
 }
