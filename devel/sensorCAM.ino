@@ -1,6 +1,6 @@
 //sensorCAM Alpha release                                                                                 limit >|
 #define BCDver 201
-    //v201 Experimenting with row-wise linear sensos S90+  SEN_SIZE 8
+    //v201 Experimenting with row-wise linear sensos.  Clear S06 bit in EXIORDD packets for bad pkt identification
     //v200 revised EXIORRDD response by adding header.  Is incompatible with CS pre v2.0 ES_IOEXSensorCAM driver
     //v170 'f' cmd output S0%% changed to S%%; #define CAM 700 & cam2 600 (test?)
     //v169 made sensor size configurable using SEN_SIZE (0-7) to insert extra unused pixels.
@@ -1076,7 +1076,7 @@ int bsn;
       }     
       case 'l':{      //l%%;  (lima) set1: set bsNo OCCUPIED(1) & INACTIVE
         bsn = get_bsNo(cmdString);    
-        if(bsn>=0){ printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn %d.) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn/pin %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=true; 
           SensorBlockStat[bsn>>3] |=  mask[bsn&7]; 
           SensorActive[bsn]=false;
@@ -1086,7 +1086,7 @@ int bsn;
       }
       case 'o':{      //o%%;  (oscar) set0: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
         bsn = get_bsNo(cmdString);     
-        if(bsn>=0){ printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn %d.) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn/pin %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=false; 
           SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
           SensorActive[bsn]=false;
@@ -2025,10 +2025,11 @@ const int numDigBytes=(NUMdigPins+7)>>3;
         MyWire.write(datapk,NUManalogPins*2);  //preload onRequest buffer // ###### 
         return 0;
  */             
-      case EXIORDAN:                  //EXIORDAN(0xE4) Read full set analogue values (@20Hz)**duplicate RDD**
+ //     case EXIORDAN:                  //EXIORDAN(0xE4) Read full set analogue values (@20Hz)**duplicate RDD**
       case EXIORDD:                   //EXIORDD(0xE6)read ALL digital bits (@100Hz)
         datapk[0] = EXIORDD;              //new header (ver 200+)
         for (int b=0;b<numDigBytes;b++)  datapk[b+1] =  SensorBlockStat[b];
+        datapk[1] = datapk[1] & 0xBF;  //clear S06 bit to aid CS bad packet identification
    //     MyWire.write(datapk,(NUMdigPins+7)>>3);    //preload onRequest buffer      // ######     
         return 0;
 
@@ -2253,7 +2254,7 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
 
 //  FUNCTION TO FLASH LED
 void flashLed(int pulse){       //flash <pulse> uSec long
-unsigned int flash;             // *assumes FLASHLED,OUTPUT
+unsigned long flash;             // *assumes FLASHLED,OUTPUT
         digitalWrite(FLASHLED, HIGH); //turn on flash
         flash=micros()+pulse; 
         while(flash>micros()){}       //delay <pulse> uSec for bright white flashLed

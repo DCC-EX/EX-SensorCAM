@@ -1,4 +1,4 @@
-/*  4/JUN/24 
+/*  5/JUN/24 
  *  © 2022, Peter Cole. All rights reserved.
  *  © 2023, Barry Daniel ESP32 revision 
  *  © 2024, Harald Barth. All rights reserved.
@@ -48,7 +48,7 @@ bool verPrint=true;
 #define IO_EX_EXSENSORCAM_H
 
 
-#define CAMERR 0xEF
+#define CAMERR 0xFE
  
 #define Sp Serial.print
 
@@ -189,28 +189,25 @@ private:
       if (_i2crb.isBusy()) return;                 // If I2C operation still in progress, return
       uint8_t status = _i2crb.status;
       if (status == I2C_STATUS_OK) {               // If device request ok, read input data
-
-        //there should be a packet in _CAMresponseBuff[32] 
-/***/ //  countB+=1; Sp(_CAMresponseBuff[0],HEX);Sp(' '); if (countB>40){countB=0;Sp('\n');}
-            
-        if ((_CAMresponseBuff[0] & 0x40) != 0) {   //response seems to have ascii cmd header (bit6 set) (o06)
-                      // process received values according to header ('@', 't', 'm','i' etc)     
-            int error = processIncomingPkt( _CAMresponseBuff, _CAMresponseBuff[0]);   // '@' 'i' 'm' 't' etc
-            if (error>0) DIAG(F("CAM packet header not recognised 0x%x"),_CAMresponseBuff[0]);
+          //apparently the above checks do not guarantee a good packet! error rate about 1 pkt per 1000
+        //there should be a packet in _CAMresponseBuff[32]            
+        if ((_CAMresponseBuff[0] & 0x60) >= 0x60) {   //response seems to have ascii cmd header (bit6 high) (o06)
+                      // process received values according to header (EXIORDD '~', 't', 'm','i' etc)     
+            int error = processIncomingPkt( _CAMresponseBuff, _CAMresponseBuff[0]);   // '~' 'i' 'm' 't' etc
+              if (error>0) DIAG(F("CAM packet header(0x%x) not recognised"),_CAMresponseBuff[0]);
                            
-        }else{ // Header not valid - mostly replaced by bank 0 data.  To avoid any bad response latch S06 to 0 ( o06 ) 
-            //versions of sensorCAM.h after 170 should return header of EXIORDD(0xE6) or '@'(0x40) with sensor state array
- /***/    if (_CAMresponseBuff[0]!=0){ Serial.print(_CAMresponseBuff[0],HEX);Serial.print('~'); countB++; if (countB>40){countB=0;Sp('\n');}
-    //        DIAG(F("i2c header not valid")); 
-    //        for(int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = _CAMresponseBuff[i];  //memcpy??
-          }else{     //timeout ?  Ignore?
-
-          }
-        }
-      }  else   reportError(status, false);   // report eror but don't go offline.
+        }else{ // Header not valid - typically replaced by bank 0 data!  To avoid any bad response set S06 to 0  
+               // versions of sensorCAM.h after 170 should return header of EXIORDD(0xE6) or '~'(0x7E) plus sensor state array
+/*          if (_CAMresponseBuff[0]!=0){    //output debug showing bad header if not blank
+      //      Serial.print(_CAMresponseBuff[0],HEX);Serial.print('~'); countB++; if (countB>40){countB=0;Sp('\n');}
+      //      DIAG(F("i2c header not valid")); 
+          }else{  //0  Ignore?  Can get bank 0 byte replacing header erroneously (i2c error).  Best to latch o06 low
+          }      //timeout ??
+*/      }
+      }else   reportError(status, false);   // report i2c eror but don't go offline.
       _readState = RDS_IDLE;
     }      
-
+  
   
     // If we're not doing anything now, check to see if a new EXIORDD transfer, or for 't' repeat, is due.
     if (_readState == RDS_IDLE) {
@@ -291,8 +288,6 @@ int valu;
 int valu2;
 uint8_t cmdNo;  
 uint8_t status = _i2crb.status;
-
-//    if(i2cAddr > ESP32CAP) return 0;  //do nothing if not ESP32 
  
  uint8_t sensorCmd = '-';
       cmdNo=outBuff[4];           //(profile)
@@ -321,12 +316,12 @@ uint8_t status = _i2crb.status;
           outBuff[0] = sensorCmd;
           inbytes   = returnBytes[cmdNo];
         } 
-      }
-       if (status != I2C_STATUS_OK){ 
-        DIAG(F("i2c bus busy.  Try again."));
+      } while( _i2crb.status != I2C_STATUS_OK){status = _i2crb.status;}   //wait until bus free
+      if (status != I2C_STATUS_OK){ 
+        DIAG(F("i2c bus busy.  Try again. %S"),I2CManager.getErrorMessage(status));
         return status;
       }
-  //    DIAG(F("num. bytes requested: %d out:%d "),inbytes,outbytes);
+    //    DIAG(F("num. bytes requested: %d out:%d "),inbytes,outbytes);
       status = I2CManager.read(i2cAddr, rBuf, inbytes, outBuff, outbytes);
           
       if (status != I2C_STATUS_OK){ 
@@ -343,10 +338,9 @@ uint8_t status = _i2crb.status;
 //sensorCmd command header byte from CAM (in rBuf[0]?)
   int processIncomingPkt(uint8_t *rBuf,uint8_t sensorCmd) {
   int k;
-   //    DIAG(F("header 0x%x"),sensorCmd);
-   //if (rBuf[0] != EXIORDY) {   //perhaps got back ascii cmd
    //   if (rBuf[0] == sensorCmd){
           switch (sensorCmd){
+            case '~':       //proposed ascii (0x7E) replacement for EXIORDD (0xE6)
             case EXIORDD:   //response to request for digital table    
               for (int i=0; i<int(digitalBytesNeeded);i++)  _digitalInputStates[i] = rBuf[i+1];
               break;   
@@ -385,8 +379,8 @@ uint8_t status = _i2crb.status;
               } 
               Serial.print('\n');
               break;
-            default:   //header not a listed character
-			        Serial.print(rBuf[0],HEX);DIAG(F("CAM packet header not valid (0x%x) (0x%x) (0x%x)"),rBuf[0],rBuf[1],rBuf[2]);
+            default:   //header not a recognised cmd character
+			        DIAG(F("CAM packet header not valid (0x%x) (0x%x) (0x%x)"),rBuf[0],rBuf[1],rBuf[2]);
               return 1;
           }
           return 0;  
@@ -424,11 +418,11 @@ uint8_t status = _i2crb.status;
 
       errors = ioESP32(_I2CAddress, _CAMresponseBuff, 32 , servoBuffer, 7);   			    			   
       if (errors==0) return;
-      else {DIAG(F("ioESP32 error %d header 0x%x"),errors,_CAMresponseBuff[0]);  
-        if (_CAMresponseBuff[0] != EXIORDY) {      //can't be sure what is inBuff[0] !
+      else {DIAG(F("ioESP32 i2c error %d header 0x%x"),errors,_CAMresponseBuff[0]);  
+/*       if (_CAMresponseBuff[0] != EXIORDY) {      //can't be sure what is inBuff[0] !
           DIAG(F("Vpin %u cannot be used as a servo/PWM pin"), (int)vpin);
         }
-      }
+*/    }
   }
   //*************************  // Display device information and status.
   // Display device information version and status. 
