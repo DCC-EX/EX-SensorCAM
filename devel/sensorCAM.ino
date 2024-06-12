@@ -581,7 +581,7 @@ void loop() {
             boxSensors=false;    //don't do again - only on first 'y' command of series
           }     
           j = Xcolumn*2 + Yrow*320*2;                   //starting point in data   //then send an ASCII header
-/***/     Spr('y');Spr(Yrow);Spr('x');Spr(Xcolumn);Spr('z');Spr(Zlength);AS.println(';');  //faster than printf()
+/***/     Spr('\n');Spr('y');Spr(Yrow);Spr('x');Spr(Xcolumn);Spr('z');Spr(Zlength);Spr(";\n");  //faster than printf()
           Yheader[1]=byte(Yrow); Yheader[3]=byte(Xcolumn/2); Yheader[5]=byte(Zlength/2);
 uint32_t  Ycksum=0;              //Calculate checksum
           for (i=0;i<6;i++) Ycksum += int(Yheader[i]);  //does not include chsum or ':' in summation
@@ -595,7 +595,6 @@ uint32_t  Ycksum=0;              //Calculate checksum
           if(i != 9) printf("Y header write error %d\n",i);
           i=Serial.write(&imageFB[j],Zlength*2);        //write data
           if(i != Zlength*2) printf("Y data write error %d\n",i);
-
           SendYpacket=false;    
         }
 
@@ -1275,9 +1274,14 @@ int bsn;
       }
       case 'x': {      //set a starting column in image for USB transmission to monitor
         printf("(x###) Xcolumn: current= %d ", Xcolumn);
-        Xcolumn=int(get_number(cmdString)) & 0xFFFE;       //make even 
+        Xcolumn=int(get_number(cmdString)) & -2;       //make even 
         if(Xcolumn > 319){Xcolumn=0;printf("New val exceeds 320 -> default = 000\n");}
+        if(Xcolumn+Zlength>320) {
+          Zlength=320-Xcolumn; 
+          printf("reset Zlength=%d ",Zlength);
+        }
         printf("new Xcolumn for sample image: %d \n",Xcolumn);
+        
         wait();
         break;
       }
@@ -1287,11 +1291,10 @@ int bsn;
         Yrow=int(get_number(cmdString));        //'y?\n' would default to Yrow = 0 if not digit
         if(Yrow>239){AS.print("ERROR row exceeds limit\n");break;}
         if(!Yhold) {                            //first 'y' command
-/***/     Yheader[1]=byte(Yrow);                //prepare header
-/***/     Yheader[3]=byte(Xcolumn/2);            
-/***/     Yheader[5]=byte(Zlength/2);           //Num. bytes sent = 4 x Zlength/2 + header
-/***/     AS.println(Yheader); 
-          AS.println("frame stays frozen until cleared with 'yy' command :::\n"); 
+          Yheader[1]=byte(Yrow);                //prepare header
+          Yheader[3]=byte(Xcolumn/2);            
+          Yheader[5]=byte(Zlength/2);           //Num. bytes sent = 4 x Zlength/2 + header
+          Serial.println("frame stays frozen until cleared with 'yy' command :::\n"); 
           boxSensors=true;                      //need to add fresh sensor boxes to image
         }
         SendYpacket=true;     //send data after next frame
@@ -1300,10 +1303,16 @@ int bsn;
       }
       case 'z': {      //set a packet length for image transmission
         printf("(z###) z: length of old packet = %d pixels. ", Zlength);
-        Zlength=int(get_number(cmdString)) & 0xFFFE;       //make even
-        if(Zlength<=0) Zlength=320;
-        if(Zlength > 320){Zlength=80;printf(" z### exceeds 320 -> default = 80\n");}
-        if((Zlength+Xcolumn)>320) Zlength=320-Xcolumn;
+        Zlength=int(get_number(cmdString)) & -2;       //make even
+        if(Zlength<2) Zlength=320;
+        if(Zlength > 320){
+          Zlength=80;
+          printf(" z### exceeds 320 -> default = 80\n");
+        }
+        if((Zlength+Xcolumn)>320) { 
+          Zlength=320-Xcolumn;
+          printf("reset Zlength=%d ",Zlength);
+        }
         printf("New Zlength for USB image: %d pixels\n",Zlength);
         wait();
         break;
