@@ -1,5 +1,8 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 169
+#define BCDver 201
+    //v201 Experimenting with row-wise linear sensos.  Clear S06 bit in EXIORDD packets for bad pkt identification
+    //v200 revised EXIORRDD response by adding header.  Is incompatible with CS pre v2.0 ES_IOEXSensorCAM driver
+    //v170 'f' cmd output S0%% changed to S%%; #define CAM 700 & cam2 600 (test?)
     //v169 made sensor size configurable using SEN_SIZE (0-7) to insert extra unused pixels.
     //v168 add minSensors to 'm', pvtThresholds to 't##,%%' and pvtThreshold to 'i%%' printout.
     //v167 added r%%* to reset all early part of a sensor bank, added brightSF to scroll, 
@@ -42,7 +45,7 @@
 #define EXIOPINS 0xE9
 #define EXIOWRAN 0xEA
 #define EXIOERR  0xEF     //last command erroneous
-  
+#define CAMERR   0xFE     //CAM cmd error header
 #include "esp_camera.h"   //Define i2c interface parameters--- Any difference between “Wire.h” and <Wire.h> ??
 
 #include <Arduino.h> 
@@ -92,9 +95,9 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #define FBPITCH  320*RGB565p      // bytes per row of FB (QVGA=320 pixels)
 
 bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false}; //show detail debug to USB output
-#define AS   Serial           //Arduino Serial abbreviation
+
 #define IFS  if(scroll==true) //output progressive scroll data
-#define Spr  Serial.print     //further shortens print statements.
+#define Spr  Serial.print     //shortens long print statements.
 #define IF0  if(DEBUG[0])     //Higher priority debug
 #define IFT  if(DEBUG[1])     //Debug control of timing output
 #define IFD  if(DEBUG[2])     //Lower priority Debug control
@@ -118,7 +121,7 @@ s%% * Scan for new location for sensor %% (00-97). If found, records location in
         record a new reference image (also computes colour ratios & brightness) The location must be unoccupied!
 w   * Wait for new command line (\n) before resuming loop().   (handy to stop display data scrolling)
 a%%   Activate sensor[%%]  & refresh Sensor_ref[%%], cRatios etc. from the [%%] image (48 bytes) in latest frame.
-a%%,rrr,xxx   * Set coordinates of Sensor[%%] to row/col: rr/xxx AND activate and auto ref.   Verify with p$ cmd.    
+a%%,rrr,xxx   * Set coordinates of Sensor[%%] to row/col: rrr/xxx AND activate and auto ref.   Verify with p$ cmd.    
 b%[#]   bank % sensors. Show which sensors OCCUPIED (in bits 7-0). 1=occupied. brightSF=#  <i2c Request $+1 bytes>  
 c$$$$ * reCalibrate camera CCD occasionally and grab new references for all enabled sensors. (Beware of doing this
         while any sensors are occupied!  Obstructed sensors will later need an r%%   Check all bank LEDS are off 
@@ -133,16 +136,16 @@ i%% * Individual sensor %% Information. Optional i%%,$$ sets a Twin sensor[$$] f
 j$#   adJust camera setting $ to value # and display most settings (as for ‘g’) ‘j’ does NOT get new refs. - use r  
 k%%,rrr,xxx   * Set coordinates of Sensor[%%] to row: rrr &  xVal: xxx. Follow with r%%. Verify values with p$ cmd 
 l%%   (Lima) force sensor %% to ON (1= occupied (LED lit) & also set SensorActive[%%] false to inactivate updating
-m$  * Min. no.($) of sequential frames to trigger Occupied threshold for detection (def.=2) (m$,## max/minSensors)    
+m$  * Min. no.($) of sequential frames to trigger Occupied threshold for detection (def.=2) (m$,## min/maxSensors)    
 n$  * bank Number $ assignment to the programmable LED to show its occupancy status.
 o%%   (Oscar)force sensor %% off (0=UN-occupied (LED off) & also set SensorActive[%%] false to inactivate updating
 p$  * Position Pointer table for banks 0 to $ giving DEFINED sensor r/x positions.  p%% shorter.  <32 data bytes>
 q$  * Query bank $, to show which sensors enabled (in bits 7-0). 1=enabled. q9 gives ALL    <Req. $+2 data bytes>
-r%%[*]  Refresh average Sensor_Ref[%%] (Iff defined), enable & calc. cRatios etc.  r%%* refreshes block up to S%% 
+r%%[*]  Refresh average Sensor_Ref[%%] (Iff defined), enable & calc. cRatios etc.  r%%* refreshes bank up to S%% 
 r00   Renew Average Refs etc. for ALL defined sensors.  Ignores active[].  Sensor 00 reserved for brightness ref.
 t##[,%%] * show/set Threshold level being used for Sensors (## sets 32-98)[for S%%] t1 toggle scrolling <1+ bytes>
 u%% * Un-define/remove sensor %% by setting INACTIVE & Sensor[%%]=0. u99 erases ALL. Needs ‘e’ to erase from EPROM
-v   * Video mode.  Reboots CAM in webserver mode. “v2” will connect to 2nd (alt.) router ssid.("ve" gives version)
+v[2]* Video mode.  Reboots CAM in webserver mode. “v2” will connect to 2nd (alt.) router ssid.("ve" gives version)
 x###  Sets column for start of Processing image transfer (0-318)
 y###  Suspend imaging. Proceeds to write header and Zlength row### pixels to USB port for Processing. 'yy' resumes
 yy    Used exclusively to end a series of 'y' commands (that suspended imaging) and returns CAM to run mode.
@@ -217,7 +220,7 @@ int aRefCtr=-1;         //for 'a' cmd
 char absNo1='0', absNo2='0';
 
 char i2cCmd[64]={'0'};      //string from Master (onReceive)
-byte dataPkt[128]={0xFE};   // prepared packet(s) for i2c (max packet=32 bytes)
+byte dataPkt[128]={CAMERR};   // prepared packet(s) for i2c (max packet=32 bytes)
 boolean newi2cCmd=false;    // flags the presence of a new i2c serial command string for processing  
                                                                                            
 int  wifi=1;                //identify default wifi router (1 or 2)
@@ -252,7 +255,7 @@ char i2cData[64];       //array of sensor status data to send on 't' request
 bool scroll=true;       //if false suppress scrolling output (use 't0')
 int  i2cDatai=0;        //array index
 
-int  threshold=45;      //difference (max Xratio+brightnessRatio) threshold for occupancy
+int  threshold=42;      //difference (max Xratio+brightnessRatio) threshold for occupancy
 int  maxDiff=0;         //exact Xdiff match produces minimum maxDiff of 32 
 int  dFlag=0;           //flag set by d%% to print out (while>0) diff and sample image for bsNo.
 int  dMaxDiff=0;        //saved maxDiff for 'd' cmd.
@@ -298,15 +301,16 @@ void startCameraServer();      //cameraInit() seems to initiate TwoWire(1) for C
 
 // *********************************************************************
 void setup() {   
-    AS.begin(BAUD);   //downloads with 115200+. Note: Mega still using 9600 for more reliable visual basic!
+    Serial.begin(BAUD);   //downloads with 115200+. Note: Mega still using 9600 for more reliable visual basic!
      Serial.setDebugOutput(true);
-    AS.println();
+    Serial.println();
      printf("\nHello\nBCD version No %d\n",BCDver);          //my software version
      printf("Total heap: %d\n", ESP.getHeapSize());   //356488  //BCD: added from esp32-how-to-use-psram  
      printf("Free heap: %d\n", ESP.getFreeHeap());    //331728  //set Arduino IDE Core Debug Level: "Verbose"
      printf("Total PSRAM: %d\n", ESP.getPsramSize()); //4192139 //should output to SerialMonitor
      printf("Free PSRAM: %d\n", ESP.getFreePsram());  //4.192139 for 4MB PSRAM
-     printf("size of unsigned long Sensor[1] %d\n",sizeof(Sensor[1]));
+
+  for (i=0;i<80*16*3;i++) Sensor666[i]=10;  //ensure none remain at 0 or risk divide by 0 reboot.
 
   camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
@@ -358,7 +362,7 @@ void setup() {
         config.frame_size = FRAMESIZE_QVGA;   //QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
         config.jpeg_quality = 10;           //0-63 0 for highest quality?
         config.fb_count = 2;
-        IFD AS.print("fb_count set to 2 as PSRAM found\n"); 
+        IFD Spr("fb_count set to 2 as PSRAM found\n"); 
       } else {                         //setup webserver mode        
         config.frame_size = FRAMESIZE_QVGA; //select optimum size 640 x 480 for Sensor (speed v resolution)
         config.jpeg_quality = 12;           //4 better quality BUT slows any conversion to BMP by ~10%
@@ -415,13 +419,13 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
       IFT printf("Doing slaveWrite() for ESP32\n");   //ESP32-S2 and ESP32-C3 don't need slaveWrite()
  char message[64];                               
       snprintf(message, 64, "E%u Packets.", i2cCtr++);//snprintf() puts the text "1 Packets" into char message[64]
-      message[0]=0xFE;
+      message[0]=CAMERR;
       MyWire.slaveWrite((uint8_t *)message, strlen(message)); //preload onRequest buffer
       IFT printf("Done slaveWrite\n");
 #endif                                                        
       delay(4000);
  
-    AS.print("Camera initialised ");AS.println(esp_err_to_name(err));
+    Spr("Camera initialised ");Serial.println(esp_err_to_name(err));
   
     sensor_t * s = esp_camera_sensor_get();
 
@@ -446,16 +450,16 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
       ConnectWifi(ssid, password);            //WiFibegin()
       if (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        AS.println("WiFi failed to connect.  Try alt-wifi (v2)?");
+        Serial.println("WiFi failed to connect.  Try alt-wifi (v2)?");
         ESP.restart();
       }
-      AS.println("");
-      AS.println("WiFi connected");
+      Serial.println("");
+      Serial.println("WiFi connected");
 
       startCameraServer();
 
-      AS.print("Camera Ready! To connect, use 'http://");
-      AS.println(WiFi.localIP());
+      Spr("Camera Ready! To connect, use 'http://");
+      Serial.println(WiFi.localIP());
  
       flashLed(250);       //long pulse flash to show MyWebServer mode established
     }
@@ -483,7 +487,7 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
       if(Sensor[0]==0){SensorActive[0]=true; SensorActiveBlk[0]|=0x01; Sensor[0]=1*8L;} //create ref sensor[0]@0,4
                                   
       delay(5000);                           //give the cam settings time to settle then renew
-      AS.print("Turn AWB & AGC OFF(0) after 5 sec. Leave auto adjustments (AWBg,AEC,AECd,AEL) ON(1)\n");
+      Spr("Turn AWB & AGC OFF(0) after 5 sec. Leave auto adjustments (AWBg,AEC,AECd,AEL) ON(1)\n");
         //set AWB,AEC,AGC OFF,  or just AWB & CB OFF?? NEEDS MORE EXPERIMENTING
 
       new_camera_settings(Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,AGg);    //set Sat,AWB,AEC,AGC,.. to defaults
@@ -504,51 +508,47 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
 
 // *************************************************************************************************************
 void loop() {
-/***/  if(prefillRef>1) AS.println(prefillRef);
+/***/  if(prefillRef>1) Serial.println(prefillRef);
 // ****IF MYWEBSERVER MODE, JUST MONITOR SERIAL PORTS FOR RESET (R or F) 
   while(MyWebServer) {          //monitor for character to trigger reboot back to sensor mode
-    if (AS.available() > 0)  {   //if MyWebServer mode, do nothing but serve web and monitor for Reset cmd.    
-      cmdChar=AS.read();
+    if (Serial.available() > 0)  {   //if MyWebServer mode, do nothing but serve web and monitor for Reset cmd.    
+      cmdChar=Serial.read();
       if((cmdChar=='R') || (cmdChar=='F')) { //'F' gives Bluetooth ability to "Finish with webserver"
-        AS.println("Restarting in sensor mode\n");        
+        Serial.println("Restarting in sensor mode\n");        
         WiFi.disconnect(true, true); 
         delay(3000);          
         ESP.restart();          //give up on wifi and return to sensor mode
-      }else AS.print(cmdChar);
+      }else Spr(cmdChar);
       if((cmdChar=='g') || (i2cCmd[0]=='g')){          //get camera status
         i2cCmd[0]='.';
         getCAMstatus();
       }
-    }         //end if (AS.available())
+    }         //end if (Serial.available())
     if ((i2cCmd[0]=='R') || (i2cCmd[0]=='F')) ESP.restart();        //exit back to sensor mode
   }       //end MyWebserver code
   
 // ***CALCULATE AND PRINT LOOP TIME - & IF CALLED FOR, UPDATE NEW CAMERA SETTINGS   
-/***/ { IFT AS.print("\n******** ");
-/***/   int loopTime=millis()-timerLoop; 
-		if(loopTime==99) loopTime=100;	//add 1 just to stop display jitter with 99
-/***/   timerLoop=millis();
-        if(loopTime<100)AS.print(' ');
-/***/   IFS{ AS.print(loopTime); AS.print("mS; "); }   
-
-/***/ }
+/***/   IFT Spr("\n******** ");
+      int loopTime=millis()-timerLoop; 
+      if(loopTime==99) loopTime=100;	//add 1 just to stop display jitter with 99
+      timerLoop=millis();
+      if(loopTime<100)Spr(' ');
+/***/   IFS{ Spr(loopTime); Spr("mS; "); }   
       HistoLoops++;                 //increment loop counter
       if (stdCtimer < millis()) {   //time to invoke new camera settings after 'c' std delay
         stdCtimer=1000*3600*24*10;      //set timer too large to ever trip again. Long 2^31 > 2,147,000,000,000
         new_camera_settings(Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,AGg);    //set Sat,AWB,AEC,AGC,..   select AWB OFF
-   //     prefillRef=10;  //start new delay before new references grabbed
-        cFlag=millis(); //Time stamp Flag for loop() to reload all references after cDelay sec of flushing frames.
-   //     AS.print("Setting new camera modes called for by 'c' cmd - another 10sec delay to reference updates!\n");  
+        cFlag=millis(); //Time stamp Flag for loop() to reload all references after cDelay sec of flushing frames  
       }
 
 // ***TAKE A FULL FRAME INTO fb IN RGB565 FORMAT 
-/***/ IFD AS.println(" Try a get_picture ");  // Get Picture from Camera.  New image starts when fb released.  
+/***/ IFD Serial.println(" Try a get_picture ");  // Get Picture from Camera.  New image starts when fb released.  
 /***/ IFT  timer=micros();                     // Images are "pipelined" so images are 2 "gets" old. (160mSec)
     camera_fb_t * fb = NULL;                  //transfer rgb565 image #1 into fb (taken  
     fb = esp_camera_fb_get();                 //get most recent frame into fb (and return pointer?)
-    if(!fb) { AS.println("Camera capture #1 failed\n"); return;}   //no pic fb ? - restart program loop    
-/***/ IFT{ AS.print(timer);timer=micros()-timer;//does camera_fb_get return error if .jpg not yet ready, or does it wait
-/***/    AS.print(" fb_get time:"); AS.println(timer);   //zStr); 
+    if(!fb) { Serial.println("Camera capture #1 failed\n"); return;}   //no pic fb ? - restart program loop    
+/***/ IFT{ Spr(timer);timer=micros()-timer;//does camera_fb_get return error if .jpg not yet ready, or does it wait
+/***/    Spr(" fb_get time:"); Serial.println(timer);   //zStr); 
 /***/ } 
     fbheight=fb->height;
 /***/ IF0 printf(" got RGB565 frame. fbheight %d fb->len %d\n",fbheight,fb->len); 
@@ -559,11 +559,10 @@ void loop() {
       imagePtr=fb->buf;    
  bool converted = f565to666(imagePtr,pitch,Sensor,Sensor666,SensorActive);  //decode rgb565 to rgb666 in Sensor666
 /*      int f565to666( byte *imageData,int pitch, long *sensor, byte *f666,bool *SensorActive) */    
-/***/ IFT{ timer=micros()-timer; /*ltoa(timer,zStr,10);*/AS.print("Decode (uS):"); AS.println(timer);}
+/***/ IFT{ timer=micros()-timer; Spr("Decode (uS):"); Serial.println(timer);}
      
-      if (!converted) {AS.print("Conversion to rgb666 failed\n"); return;}
+      if (!converted) {Spr("Conversion to rgb666 failed\n"); return;}
 /***/ IFD printf("should now be rgb666 in Sensor666[]\n");      
-//      int fblength = fb->len;   //maybe needed for a scan?
 
 // ****SEE IF IMAGE DUMP (TO PROCESSING4)CALLED FOR & DUMP AS REQUESTED BEFORE NEW FRAME INITIATED
       if(Yhold) count=0;      //reset command string index & prepare for a new command following recent y#
@@ -577,7 +576,7 @@ void loop() {
             boxSensors=false;    //don't do again - only on first 'y' command of series
           }     
           j = Xcolumn*2 + Yrow*320*2;                   //starting point in data   //then send an ASCII header
-/***/     Spr('y');Spr(Yrow);Spr('x');Spr(Xcolumn);Spr('z');Spr(Zlength);AS.println(';');  //faster than printf()
+/***/     Spr('\n');Spr('y');Spr(Yrow);Spr('x');Spr(Xcolumn);Spr('z');Spr(Zlength);Spr(";\n");  //faster than printf()
           Yheader[1]=byte(Yrow); Yheader[3]=byte(Xcolumn/2); Yheader[5]=byte(Zlength/2);
 uint32_t  Ycksum=0;              //Calculate checksum
           for (i=0;i<6;i++) Ycksum += int(Yheader[i]);  //does not include chsum or ':' in summation
@@ -591,12 +590,11 @@ uint32_t  Ycksum=0;              //Calculate checksum
           if(i != 9) printf("Y header write error %d\n",i);
           i=Serial.write(&imageFB[j],Zlength*2);        //write data
           if(i != Zlength*2) printf("Y data write error %d\n",i);
-
           SendYpacket=false;    
         }
 
-        while (AS.available() > 0) {   //each command is followed by a fresh loop to "get_image"
-          cmdChar=AS.read();
+        while (Serial.available() > 0) {   //each command is followed by a fresh loop to "get_image"
+          cmdChar=Serial.read();
           cmdString[count]=cmdChar;               //add it to cmd string
           count+=1;
           count=constrain(count,0,20);            //increment & limit string length
@@ -648,21 +646,21 @@ int  Noise=0;    //difference between frame pixel and ref pixel
 */
      frameNo += 1; frameNo &= 0x3F;       //inc. frame counter
      if(frameNo==1) {  //every 64th frame update Sensor_ref[00] & print 4x4 new av & current red(noisiest?) values    
-/***/   IFN AS.print("av&cur Red ref[0] ");   //NOTE THIS DOES NOT UPDATE BRIGHT OR COLOUR RATIOS!
+/***/   IFN Spr("av&cur Red ref[0] ");   //NOTE THIS DOES NOT UPDATE BRIGHT OR COLOUR RATIOS!
         for (i=0;i<48;i++) {                 //48 = 4x4pixels*3colours
           Sensor_ref[i]=Sensor666Av[i]>>6;  //update Sensor_ref[0/0] every 6.4 seconds (64 frames) (av = sum/64)
-/***/     IFN{ AS.print('&');AS.print(Sensor_ref[i]); }        //print whole ref (DEC)   
-/***/     IFN if(i%3==0) {AS.print(" [");AS.print(i);AS.print("]:");AS.print(Sensor_ref[i]);AS.print(' ');\
-/***/                     AS.print(Sensor666[i]);} //print (DEC) one (red) colour of new sensor_ref[00] & actual[00]                
+/***/     IFN{ Spr('&');Spr(Sensor_ref[i]); }        //print whole ref (DEC)   
+/***/     IFN if(i%3==0) {Spr(" [");Spr(i);Spr("]:");Spr(Sensor_ref[i]);Spr(' ');\
+/***/                     Spr(Sensor666[i]);} //print (DEC) one (red) colour of new sensor_ref[00] & actual[00]                
           Sensor666Av[i]=0;                 //initialise for next 64 frames
         }  
-/***/   IFN AS.print("\n.......");              //try to keep next line aligned.      
+/***/   IFN Spr("\n.......");              //try to keep next line aligned.      
      }
   //compute new cratios etc for Sensor[00] latest av. reference UPDATE sensor_ref(00) every 6.4sec to new average
      if(frameNo==2) {                       //grab_ref() includes calculation of new Cratios & brightness
        grab_ref(0,Sensor_ref,S666_pitch,0L,&Sensor_ref[00],&Sen_Brightness_Ref[00],&SensorRefRatio[00]);  
        Sen_Brightness_Ref[00]=r00Av; //Sum of (grab_ref)rounded averages is < Average of sum, use r00Av instead.
-/***/   IFN {AS.print("adjusted _Brightness_ref[00] to Average "); AS.println(Sen_Brightness_Ref[00]);}
+/***/   IFN {Spr("adjusted _Brightness_ref[00] to Average "); Serial.println(Sen_Brightness_Ref[00]);}
      }
 int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*63 (3024max)) 
      for (i=0;i<48;i+=3){                   //calculate colour averages (NB. not colour ratios!)
@@ -687,7 +685,6 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
      rollNsR=rollNsR+sumR-rollNsFrameR[frameNo]; rollNsFrameR[frameNo]=sumR; r00NsR=rollNsR>>6;  //calculate rolling average noise on Sensor[00]
      rollNsG=rollNsG+sumG-rollNsFrameG[frameNo]; rollNsFrameG[frameNo]=sumG; r00NsG=rollNsG>>6;  //divide by 64 (frames)
      rollNsB=rollNsB+sumB-rollNsFrameB[frameNo]; rollNsFrameB[frameNo]=sumB; r00NsB=rollNsB>>6;  //also divide by 16 to get av/pixel
-  //   Print Average bright (16x3 bytes) & sum of squared colour noise in a frame (RMS value=sqrt(r00NsR/16) ..etc.
      IFN printf("s00 roll'n brAv=%d, noisAv=%d %d %d s",r00Av,r00NsR,r00NsG,r00NsB);  //SHOULD THESE BE /16 as 16 pixels in every r00Ns%
 
 // ****FOR FLUORESCENT LIGHTING TRY TO SYNCHRONISE release/start image WITH 50Hz MAINS USING INTERNAL CLOCK
@@ -706,7 +703,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
       esp_camera_fb_return(fb);         //release jpg camera image frame buffer - starts new frame capture? 
          //sensor images now in 3 byte format in array Sensor666[] 
 	 
-/***/ IFT{ AS.print("50Hz fb return(uS) "); AS.println(timer);}
+/***/ IFT{ Spr("50Hz fb return(uS) "); Serial.println(timer);}
      
 // ****IF CALLED FOR BY c####, OR STARTUP(), DO A FULL REFERENCE UPDATE FOR ALL ACTIVE SENSORS
     //if cFlag is not 0 then all defined sensors should be prefilled from good stable unoccupied image, i.e.AFTER
@@ -742,7 +739,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
       avOddFrame=!avOddFrame;        //flip flag for av2frames() execution
       for(bsn=0;bsn<80;bsn++){ if(bsn==1)timer=micros(); //leave bsn==0 out of timing to see effect.
         if (SensorActive[bsn]){     //skip compare if Sensor NOT active! (inactive sensors can't  
-                                //                       auto update/track brightness drift (& saves time))
+                                    //                    auto update/track brightness drift (& saves time))
      // ****USE 2 image average for compare if bsNo < TWOIMAGE_MAXBS as a test for improved algorithm  
           if (bsn < TWOIMAGE_MAXBS) av2frames(bsn);    //do 2xframe av. if active & bsNo < 2/0   & compare current S666 image   
           maxDiff= compare( Sensor666, S666_row, long(bsn*S666_pitch), &SensorRefRatio[bsn*12], bsn, RGB565p);      
@@ -751,13 +748,13 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
           if (bsn==dbsNo) {dMaxDiff=maxDiff; dBright=bright*brightSF;} //save for delivery on dflag or i2c request
         }                        
         if(bsn==0){         //special treatment for brightness reference sensor[00]
-/***/     IFD {AS.print("bsNo 0/0 maxDiff: ");AS.println(maxDiff);}          
+/***/     IFD {Spr("bsNo 0/0 maxDiff: ");Serial.println(maxDiff);}          
           refBrightness=Sen_Brightness_Ref[0];   //a refBrightness from last time ALL references updated (startup, 'r00' or 'c' only)             
           refActual=quad[4];   //save refActual in case use later
-/***/     IFT { AS.print(refBrightness);AS.print(" refBrightness > actual ");AS.println(refActual);}  //sensor[00]
-          else IFS{ AS.print(" T");AS.print(threshold);AS.print(" N");AS.print(nLED);AS.print(" R");
-            AS.print(refBrightness);AS.print(" A");AS.print(refActual);
-            AS.print(" M");Spr(min2flip);Spr(" B");Spr(brightSF);Spr("\t");   //short & no \n
+/***/     IFT { Spr(refBrightness);Spr(" refBrightness > actual ");Serial.println(refActual);}  //sensor[00]
+          else IFS{ Spr(" T");Spr(threshold);Spr(" N");Spr(nLED);Spr(" R");
+            Spr(refBrightness);Spr(" A");Spr(refActual);
+            Spr(" M");Spr(min2flip);Spr(" B");Spr(brightSF);Spr("\t");   //short & no \n
           }
           bsn=minSensors;
         }   //end if(bsn==0)
@@ -767,9 +764,9 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
       i2cData[i2cDatai+1]=0x00;    //put a NULL on end of data message to end transmission
       
       timer=micros()-timer;
-/***/ IFT {AS.print("Compare(uS): "); AS.print(timer,DEC);}
-      if(bsnUpdated>=0) { IFS{ AS.print("Ref 0");AS.print(bsnUpdated,OCT);} bsnUpdated=-1;} 
-      IFS AS.println("");              //was consistently getting same No. from (timer,DEC) & (zStr) (until neg nos)
+/***/ IFT {Spr("Compare(uS): "); Spr(timer,DEC);}
+      if(bsnUpdated>=0) { IFS{ Spr("Ref 0");Spr(bsnUpdated,OCT);} bsnUpdated=-1;} 
+      IFS Serial.println("");              //was consistently getting same No. from (timer,DEC) & (zStr) (until neg nos)
  
 // ****CHECK DFLAG AND OUTPUT REQUESTED INFO.  (BUG - doesn't look like it prints requested dbsNo DIFFERENCES only LAST active sensor leftover?)
         //if dFlag==0 just output diffs. if dFlag >0 output image table and repeat dFlag times
@@ -789,7 +786,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
     else { digitalWrite(FLASHLED, LOW); delay(10); digitalWrite(FLASHLED, HIGH); }     //delelays loop time!
   
 // ****CHECK FOR USB COMMAND INPUT -  PROCESS ANY COMMAND
-/***/ IFd 7) if (SensorBlockStat[h7block] != 0){AS.print("debug-trip in Block:");AS.println(h7block);wait();}  //wait if Block # occupied
+/***/ IFd 7) if (SensorBlockStat[h7block] != 0){Spr("debug-trip in Block:");Serial.println(h7block);wait();}  //wait if Block # occupied
 
       if(aRefCtr>0){aRefCtr--;        //do we need to do a ref for new sensor yet?
         if(aRefCtr==1){     
@@ -802,21 +799,21 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
       }
        
     if(newi2cCmd==true){     
-/***/ IFI2C {Serial.print("I2C:");AS.print(char(i2cCmd[0]));}
+/***/ IFI2C {Serial.print("I2C:");Spr(char(i2cCmd[0]));}
       for (i=0;i<64;i++)cmdString[i] = i2cCmd[i];     //copy i2cCmd to cmdString
-/***/ IFT {AS.print("****************i2cCmd: ");AS.print(i2cCmd);}
+/***/ IFT {Spr("****************i2cCmd: ");Spr(i2cCmd);}
       if(cmdString[0]=='w') newi2cCmd=false;  //this ensures 'w' actually waits - other i2c commands DON'T WAIT
       processCmd(imagePtr,pitch,Sensor);      //process command line
       if(cmdString[0]!='w') newi2cCmd=false;  //if() lets newi2cCmd cancel 'w' without being discarded itself.
     }
-    else while (AS.available() > 0) {         //each command is followed by a fresh loop to "get_image"
-      cmdChar=AS.read();
+    else while (Serial.available() > 0) {         //each command is followed by a fresh loop to "get_image"
+      cmdChar=Serial.read();
       cmdString[count]=cmdChar;               //add it to cmd string
-      AS.print(cmdChar);                      //immediate echo back to monitor
+      Spr(cmdChar);                      //immediate echo back to monitor
       count+=1;
       count=constrain(count,0,20);            //increment & limit string length
       if (cmdChar == '\n'){                   //don't process cmdString until get LF (\n)
-        AS.println("**************"); // return a new line to monitor
+        Serial.println("**************"); // return a new line to monitor
         processCmd(imagePtr,pitch,Sensor);  //process command line 
         count=0;      //reset command string index 
       }     
@@ -839,7 +836,7 @@ int b=0;        //local (block) variable
 int c, i, j;    //j: sensor index
 int param2;      // second cmd argument
 int bsn; 
-/***/ IFI2C for(i=0;i<12;i++) AS.print(char(cmdString[i]));
+/***/ IFI2C for(i=0;i<12;i++) Spr(char(cmdString[i]));
     if(cmdString[1]==' ') for(i=1;i<62;i++) cmdString[i]=cmdString[i+1];   
     switch(cmdString[0]) {  
       case 'a':{      //a%%;  enAble Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
@@ -862,9 +859,7 @@ int bsn;
           }
           wait();
         }      
-        if (bsn>=0) { printf("(a%%%%) enAble: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);
- //         printf("PLEASE DO AN r%%%% AFTER a few new frames to set new reference image for bsNo 0%o.\n",bsn);
-         
+        if (bsn>=0) { printf("(a%%%%) enAble: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);         
           SensorActive[bsn]=true;              //set active and grab new ref
           SensorActiveBlk[bsn>>3] |= mask[bsn&0x07];
           grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],&Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12]);
@@ -874,19 +869,19 @@ int bsn;
       }     
       case 'b':{      //b$;  Block status byte output to host on USB (& i2c)  //b$# use # to change brightSF from 1 to 4     
         if (!isDigit(cmdString[1])) {
-          AS.print("(b$#) Bank/BrightSF: parameters not found - brightSF(#): ");AS.println(brightSF);
+          Spr("(b$#) Bank/BrightSF: parameters not found - brightSF(#): ");Serial.println(brightSF);
         } 
         else {
           if (isDigit(cmdString[2])){           //if b$%; use % to change brightSF from 1 to 3      
             brightSF=cmdString[2]-0x30;
-            AS.print("(b$#) changing brightSF sensitivity to "); AS.println(brightSF); 
+            Spr("(b$#) changing brightSF sensitivity to "); Serial.println(brightSF); 
           }  
           b = cmdString[1]-0x30;               //ignore any further text after b$
           if(!newi2cCmd){
-            AS.print("(b$#)bank: ");AS.print(b);AS.print(" occupancy status byte: 0x");AS.print(SensorBlockStat[b],HEX);AS.print(" (sensors 7-0) ");
-            for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' ');
+            Spr("(b$#)bank: ");Spr(b);Spr(" occupancy status byte: 0x");Spr(SensorBlockStat[b],HEX);Spr(" (sensors 7-0) ");
+            for (i=7;i>=0;i--) Spr((SensorBlockStat[b]>>i) & 0x01); Serial.println(' ');
           }         
-          else IFI2C {for (i=7;i>=0;i--) AS.print((SensorBlockStat[b]>>i) & 0x01); AS.println(' '); }        
+          else IFI2C {for (i=7;i>=0;i--) Spr((SensorBlockStat[b]>>i) & 0x01); Serial.println(' '); }        
         } 
         break;  
       }               //c$$$$#####; set $=1 to leave AWB AEC AGC & CB respectively. 
@@ -894,49 +889,60 @@ int bsn;
                       //6x % parameters are 1/0 for AWBg AEC AECd AEL AGC AGg respectively ( default to off(0) ) 
                       //full list: arguments for 'c' command; Bri Con Sat AWB  AWBg AEC AECd AEL AGC AGg (NO SPACES!)
         printf("(c$$$####$##) caution recommended - USE CMD 'r00' after 15 seconds or just use 'j' ( $= _|-|0|1|2 )\n");  
-        autoRefSuspended = true;                //Suspend auto refRefresh() during 'r'                    
+                 
         Bri=0; Con=1; Sat=2; AWB=1; AWBg=1; AEC=0; AECd=0; AEL=1; AGC=1; AGg=9;    //reset defaults
    /*     if(cmdString[1]<0x20) printf("CALIBRATE CAM - syntax: c AWB AEC AGC CBar Bri Con Sat AGCgain AWBg    e.g. reset defaults: c01200129\n"); */
-        if(cmdString[1]<0x20){ printf("Calibrate CAM - syntax: c Bri Con Sat AWB AWBg AEC AECd AEL AGC AGgain   e.g. reset defaults: c0121100119\n"); break;}
+        if(cmdString[1]<0x20){ 
+          printf("Calibrate CAM - syntax: c Bri Con Sat AWB AWBg AEC AECd AEL AGC AGgain   e.g. reset defaults: c0121100119\n");
+          wait();
+          break;
+        }
+        autoRefSuspended = true;                //Suspend auto refRefresh() during 'c'           
         cStr=" ";
         if (isDigit(cmdString[1])) Bri=cmdString[1]-0x30;          //options: use 0,1,2,'-' for -1 and '_' for -2  
         else {if (cmdString[1]=='-') Bri=-1; if (cmdString[1]=='_') Bri=-2;} 
-        AS.print(" Bri=");AS.print(Bri); cStr=cStr+cmdString[1];                  
+        Spr(" Bri=");Spr(Bri); cStr=cStr+cmdString[1];                  
         if (isDigit(cmdString[2])) Con=cmdString[2]-0x30;
         else {if (cmdString[2]=='-') Con=-1; if (cmdString[2]=='_') Con=-2;}
-        AS.print(" Con=");AS.print(Con); cStr=cStr+cmdString[2];
+        Spr(" Con=");Spr(Con); cStr=cStr+cmdString[2];
         if (isDigit(cmdString[3])) Sat=cmdString[3]-0x30; 
         else {if (cmdString[3]=='-') Sat=-1; if (cmdString[3]=='_') Sat=-2;}
-        AS.print(" Sat=");AS.print(Sat); cStr=cStr+cmdString[3];       
-        if (cmdString[4]=='1') {AWB=1; AS.print(" AWB "); cStr=cStr+" AWB ";} else AWB=0;
-        if (cmdString[5]!='\n') {if(cmdString[11]!='\n'){AS.print(" missing arguments\n"); break;}
-          if (isDigit(cmdString[5])){AWBg=cmdString[5]-0x30; AS.print(" AWBg=");AS.print(AWBg); cStr=cStr+cmdString[5];}
-          if (cmdString[6]=='1') {AEC =1; AS.print(" AEC "); cStr+=" AEC ";}else {AEC=0; cStr+=" ";}
-          if (cmdString[7]=='1') {AECd=1; AS.print(" AECd ");cStr+=" AECd ";}else AECd=0;                      
+        Spr(" Sat=");Spr(Sat); cStr=cStr+cmdString[3];       
+        if (cmdString[4]=='1') {AWB=1; Spr(" AWB "); cStr=cStr+" AWB ";} else AWB=0;
+        if (cmdString[5]!='\n') {
+          if(cmdString[11]!='\n'){Spr(" missing arguments\n"); break;}
+          if (isDigit(cmdString[5])){AWBg=cmdString[5]-0x30; Spr(" AWBg=");Spr(AWBg); cStr=cStr+cmdString[5];}
+          if (cmdString[6]=='1') {AEC =1; Spr(" AEC "); cStr+=" AEC ";}else {AEC=0; cStr+=" ";}
+          if (cmdString[7]=='1') {AECd=1; Spr(" AECd ");cStr+=" AECd ";}else AECd=0;                      
           if (isDigit(cmdString[8])) AEL=cmdString[8]-0x30;          //options: use 0,1,2,'-' for -1 and '_' for -2                 
           else {if (cmdString[8]=='-') AEL=-1; if (cmdString[8]>'_') AEL=-2;} 
-          AS.print(" AEL=");AS.print(AEL); cStr=cStr+' '+cmdString[8];                                   
-          if (cmdString[9]=='1') {AGC =1; AS.print(" AGC "); cStr+=" AGC ";}else {AGC=0; cStr+=" ";}
-          if (isDigit(cmdString[10])) {AGg=cmdString[10]-0x30; AS.print(" AGCgain=");AS.print(AGg); cStr=cStr+cmdString[10];}     
+          Spr(" AEL=");Spr(AEL); cStr=cStr+' '+cmdString[8];                                   
+          if (cmdString[9]=='1') {AGC =1; Spr(" AGC "); cStr+=" AGC ";}else {AGC=0; cStr+=" ";}
+          if (isDigit(cmdString[10])) {AGg=cmdString[10]-0x30; Spr(" AGCgain=");Spr(AGg); cStr=cStr+cmdString[10];}     
         }
-        AS.print(" \n"); 
+        Spr(" \n"); 
                
         new_camera_settings(Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,AGg);        //set AWB,AEC,AGC    select Auto ON initially 
      //   loop will do following call after 10 seconds and delay a further 10 before doing ref updates                 
      //   new_camera_settings(Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,AGg);    //set AWB,AEC,AGC,ColourBar    select AWB OFF      
-        AS.print("Calibrate: run 10 seconds for auto calibrate before turning selected 'Auto' options off ");AS.println(cStr);
+        Spr("Calibrate: run 10 seconds for auto calibrate before turning selected 'Auto' options off ");Serial.println(cStr);
         prefillRef=1;       //set to 1 should suppress normal loop data stream until end of stdCtimer
         getCAMstatus();     //also print in 'g' format
-        AS.println(" NOTE Calibration operation 'c' has NOT FULLY FOLLOWED THROUGH - assumes SensorStat[] & SensorBlockStat[] will automatically reset");
+        Serial.println(" NOTE Calibration operation 'c' has NOT FULLY FOLLOWED THROUGH - assumes SensorStat[] & SensorBlockStat[] will automatically reset");
         printf("After a new line, calibrate will take ~20 seconds to execute and refresh references\n");
         wait();
         stdCtimer=millis()+10000;        //start a timer - wait 10sec for adjustments to settle automatically then turn off AGC say 
         break;              //leaves flags set for main loop() to calibrate from fresh images.        
       }
       case 'd':{      //d%%#; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
+        if(!isDigit(cmdString[1])) {
+          printf("(d%%%%#) Diff score for S%%%%. Optional repeat # times including frame samples \n ");
+          wait();
+          break;
+        }
         dFlag=0;      //set a (+ve) flag for loop() to print out data after it gets a fresh image repeating if desired.
         if(isDigit(cmdString[3])) dFlag=int(get_number(&cmdString[2]));  //set repeat count up to 9999            
-        AS.print("(d%%#) Diff: ");
+        Spr("(d%%#) Diff: ");
         dbsNo = get_bsNo(cmdString);
         if (dbsNo>=0) {              
           printf(" difference score for Sensor[0%o], use %d consecutive images (remember pipelining!)\n",dbsNo,dFlag);
@@ -966,9 +972,9 @@ int bsn;
         break;            
       }  
       case 'f':{      //f%%;  Frame: image of bsNo sensor output to USB (if sensor[bsNo] undefined, will get no data)
-        AS.print("(f%%) ");
+        Spr("(f%%) ");
         bsn = get_bsNo(cmdString);
-        printf("Frame: Print fb ref & newest sample for S0%o\n",bsn);
+        printf("Frame: Print fb ref & newest sample for S%o\n",bsn);
         if (bsn>=0) write_img_sample(Sensor666,S666_row,bsn*48,24);  //write current image of sensor[bsn] ref & new data         
         wait();
         break;
@@ -979,7 +985,7 @@ int bsn;
         break; 
       }
       case 'j':{        //j$#;  Set one camera parameter($) directly to digit(#)  (5=-1,6=-2)
-        AS.print("(j$#) adJust camera setting $ to # (NO auto new Ref's)\n");
+        Spr("(j$#) adJust camera setting $ to # (NO auto new Ref's)\n");
         new_camera_set(cmdString[1],cmdString[2]);  //if invalid $, print list of valid parameters 
         getCAMstatus();   // display new settings, as for (g) cmd
         wait();
@@ -1034,10 +1040,17 @@ int bsn;
         }
         printf("(i%%%%,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
         if (SensorStat[bsn])printf("true/OCCUPIED    ");             
-        else                 printf("false/unoccupied ");
+          else              printf("false/unoccupied ");
         printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
         if (SensorTwin[bsn]!=0)printf(" Twin = 0%o ",SensorTwin[bsn]);
-        if (pvtThreshold[bsn]!=255)printf(" pvtThreshold= %d ",pvtThreshold[bsn]);
+        if (pvtThreshold[bsn]!=255){ printf(" pvtThreshold= %d ",pvtThreshold[bsn]);
+          if(pvtThreshold[bsn]>=128){
+            int lstepR= pvtThreshold[bsn]&0x7F>>4;              //linear row step
+            int lstepX = pvtThreshold[bsn]&0x0F;
+            if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
+            printf(" Linear sensor: stepR %d stepX %d ",lstepR,lstepX);
+          }
+        }
         b=0;
         for(j=0;j<48;j++) b += Sensor666[bsn*48+j];
         printf(" brightness A%d\n",b);
@@ -1050,7 +1063,7 @@ int bsn;
    int  rowVal=int(get_number(&cmdString[3]));
         if(cmdString[3]!=',' || rowVal<0 || rowVal>239) printf("invalid rowValue\n");
         else {
-		  i=7;
+          i=7;
           if(cmdString[5]==',') i=5;
           if(cmdString[6]==',') i=6;       
    int    xVal=get_number(&cmdString[i]);
@@ -1065,26 +1078,26 @@ int bsn;
       }     
       case 'l':{      //l%%;  (lima) set1: set bsNo OCCUPIED(1) & INACTIVE
         bsn = get_bsNo(cmdString);    
-        if(bsn>=0){ printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn %d.) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn/pin %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=true; 
           SensorBlockStat[bsn>>3] |=  mask[bsn&7]; 
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];           
-        }else printf("(l%%%%)(Lima) set1: Sensor %%%% state set = 1, OCCUPIED & disabled\n");
+        }else printf("(l%%%%)(Lima) set1: Sensor %%%% latch state = 1, OCCUPIED & disabled\n");
         break;
       }
       case 'o':{      //o%%;  (oscar) set0: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
         bsn = get_bsNo(cmdString);     
-        if(bsn>=0){ printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn %d.) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn/pin %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=false; 
           SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07]; 
-        }else  printf("(o%%%%)(Oscar)set0: Sensor[%%%%] set = 0, UN-OCCUPIED & disabled\n");
+        }else  printf("(o%%%%)(Oscar)set0: Sensor[%%%%] latch state = 0, UN-OCCUPIED & disabled\n");
         break;             
       }
       case 'm':{      //m$;    Minimum: sequential frames to trigger Occupied status (default 2)
-                      //m$,##; Optional set Max sensors to ## (decimal)
+                      //m$,##; Optional set maxSensors to ## (decimal)
         if (isDigit(cmdString[1])) {   //default value for min2flip = 2
           b = cmdString[1]-0x30;               //ignore any further text after m# 
           if(b>0) min2flip = b;                //only allow 1-9        
@@ -1126,19 +1139,19 @@ int bsn;
         break;
       }
       case 'q':{      //q$;  Query: block $ sensors. Show which are enabled - byte of 8 sensors (7-0) to USB (& i2c)      
-        if(!isDigit(cmdString[1]))  b=1;  //q defaults to q1;    //AS.println("Query: block invalid \n");
+        if(!isDigit(cmdString[1]))  b=1;  //q defaults to q1;    
         else b=cmdString[1]-0x30;
         j=0;
         if(b==9) j=9;      //if "q9" send all blocks in reverse order (i.e. 9 first) else just do requested block       
-        AS.print("(q$) Query: bank ");AS.print(b);AS.print(" sensors (7-0) in enabled state: ");
+        Spr("(q$) Query: bank ");Spr(b);Spr(" sensors (7-0) in enabled state: ");
         for (j=j;j>=0;j--){
             for (i=7;i>=0;i--)
-              if(!SensorActive[b*8+i]) AS.print('0');
-              else AS.print('1');                         
-            AS.print(" ");
+              if(!SensorActive[b*8+i]) Spr('0');
+              else Spr('1');                         
+            Spr(" ");
             b=b-1;
         } 
-        AS.println(' '); 
+        Serial.println(' '); 
         wait();
         break; 
       }
@@ -1154,7 +1167,7 @@ int bsn;
           if(rbsn==0) rbsn=1;       //don't touch reserved S00        
           refRefresh(autoRefSuspended);      //false suspend starts new av of first sensor of block
         }else{                       //do normal 'r%%' cmd.
-          if(Sensor[bsn]==0) { AS.print("No action as Sensor(bsNo) undefined\n");break;}
+          if(Sensor[bsn]==0) { Spr("No action as Sensor(bsNo) undefined\n");break;}
           autoRefSuspended = true;                //Suspend auto RefReferesh() during 'r'
           if((bsn>0) && (Sensor[bsn]>0) ) {   // if not 00 AND defined, set Active & refresh reference for one bsNo alone          
             SensorActive[bsn]=true;      //grab_ref() gets image from Sensor666[] and computes new cRatios and brightness
@@ -1173,35 +1186,34 @@ int bsn;
       } 
       case 's':{      //s%%;  Scan for bright spot and set new xy for Sensor[bsNo]
         bsn = get_bsNo(cmdString);;       //s0# or s%#; accepted as Sensor number (bsn=8*%+#). Second digit should not be >7
-        if (bsn<0) { AS.print("(s%%)Scan: illegal bsNo\n"); break;  }               //do nothing if illegal bsNo.      
+        if (bsn<0) { Spr("(s%%)Scan: place Sensor S%% at brightest point\n"); break;  }               //do nothing if illegal bsNo.      
         sScan=bsn;             //tell "loop()" to scan with fresh image for the bsNo in sScan. (0-79)
         sScanCount=3;          //request 3 fresh frames first to flush pipeline
         break;
       }     
       case 't':{      //t_:  Set threshold 31 to 250 for sensor "trip", send value to USB (& i2c)
         int param1 = get_number(cmdString);  //no number returns 0
-        if(param1==00 && cmdString[3]==',') param1=99;
+        if((param1==00) && (cmdString[3]==',')) param1=99; //t0,%% does nothing, t00,%% clears pvtThreshold[%%]
+    //    Serial.println(param1);
         if(param1 > 30) {
-          if(cmdString[3]==',') { 
+          int comma=0;
+          if(cmdString[4]==',') comma=4;  //situation for linear sensor setup
+          if(cmdString[3]==',') comma=3;
+          if(comma>0){ 
             bsn=00;       
-            if (isDigit(cmdString[1])) bsn = get_bsNo(&cmdString[3]);        
+            if (isDigit(cmdString[1])) bsn = get_bsNo(&cmdString[comma]);  //threshold must be 01-99      
             if(bsn > 0) pvtThreshold[bsn]=byte(param1);   
             if(param1 == 99) {pvtThreshold[bsn]=255;param1=00;}      // clear pvtThreshold
             printf("(t##,%%%%) setting pvtThreshold to %d for sensor S%o \n",param1,bsn);
-          }          
+          }
+                    
           else threshold=param1;  // will be permanent only use 'e' command (along with sensor changes and nLED)
         }
         else if(param1==1) {
               scroll=!scroll;  //use to hide scrolling status data.
               if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
         }
-        printf("(t##) Threshold: trip point set to %d\n(t1)will toggle scroll data ON/OFF\n", threshold);
-/*       if(cmdString[3]==',') { 
-          error = get_number(&cmdString[3]);  //get second parameter
-          if(error > 0) minSensors=error-1;   // can't set minSensors to 0 otherwise
-          printf("(t##,##) setting minSensors to 0%o \n",minSensors);
-        } 
-*/
+        printf("(t##) Threshold: trip point set to %d \n", threshold);
         wait();        
         break;
       }
@@ -1212,7 +1224,7 @@ int bsn;
           bsn=int(cmdString[1]-48);    
           if(isDigit(cmdString[2])&&(cmdString[2]<=0x37)){      
             bsn=bsn*8+int(cmdString[2])-48;      //2nd digit <8
-            printf("(u%%%%) Undefine: Undefining %d/%d  bsn %d\n",bsn/8,bsn&0x07,bsn);
+            printf("(u%%%%) Undefine: Undefining %d/%d  (bsn %d)\n",bsn/8,bsn&0x07,bsn);
             Sensor[bsn]=0L;
             SensorActive[bsn]=false;  
             SensorActiveBlk[bsn>>3] &= ~mask[bsn&7];    
@@ -1231,9 +1243,9 @@ int bsn;
       case 'R': {     //R;  Reset command reboots the CAM in Sensor mode and restores parameters from EPROM
         if(cmdString[0]!='F'){                          //'F' forces Restart immediately (for EX-CS)
           printf("(R)Reset: Waiting for 'Enter' to trigger reset in Sensor Mode - 'aw' will abort 'R' and wait\n");
-          while (!AS.available() && !newi2cCmd) delay(10);  //stops looping indefinitely until input a newline (\n)
-          cmdChar=AS.read();       
-          if(cmdChar != '\n'){AS.println("\nAborting Reset"); break;}  //any character can abort except LF
+          while (!Serial.available() && !newi2cCmd) delay(10);  //stops looping indefinitely until input a newline (\n)
+          cmdChar=Serial.read();       
+          if(cmdChar != '\n'){Serial.println("\nAborting Reset"); break;}  //any character can abort except LF
         }
         ESP.restart();  //or ESP.reboot()?
         break;
@@ -1265,9 +1277,14 @@ int bsn;
       }
       case 'x': {      //set a starting column in image for USB transmission to monitor
         printf("(x###) Xcolumn: current= %d ", Xcolumn);
-        Xcolumn=int(get_number(cmdString)) & 0xFFFE;       //make even 
+        Xcolumn=int(get_number(cmdString)) & -2;       //make even 
         if(Xcolumn > 319){Xcolumn=0;printf("New val exceeds 320 -> default = 000\n");}
+        if(Xcolumn+Zlength>320) {
+          Zlength=320-Xcolumn; 
+          printf("reset Zlength=%d ",Zlength);
+        }
         printf("new Xcolumn for sample image: %d \n",Xcolumn);
+        
         wait();
         break;
       }
@@ -1275,13 +1292,12 @@ int bsn;
         if(cmdString[1]=='\n'){SendYpacket=true; break;} //'y' alone should repeat last y (e.g. for crc error retry)
         if(cmdString[1]=='y'){Yhold=false; break;}    //end image transfer with a "yy" command
         Yrow=int(get_number(cmdString));        //'y?\n' would default to Yrow = 0 if not digit
-        if(Yrow>239){AS.print("ERROR row exceeds limit\n");break;}
+        if(Yrow>239){Spr("ERROR row exceeds limit\n");break;}
         if(!Yhold) {                            //first 'y' command
-/***/     Yheader[1]=byte(Yrow);                //prepare header
-/***/     Yheader[3]=byte(Xcolumn/2);            
-/***/     Yheader[5]=byte(Zlength/2);           //Num. bytes sent = 4 x Zlength/2 + header
-/***/     AS.println(Yheader); 
-          AS.println("frame stays frozen until cleared with 'yy' command :::\n"); 
+          Yheader[1]=byte(Yrow);                //prepare header
+          Yheader[3]=byte(Xcolumn/2);            
+          Yheader[5]=byte(Zlength/2);           //Num. bytes sent = 4 x Zlength/2 + header
+          Serial.println("frame stays frozen until cleared with 'yy' command :::\n"); 
           boxSensors=true;                      //need to add fresh sensor boxes to image
         }
         SendYpacket=true;     //send data after next frame
@@ -1290,10 +1306,16 @@ int bsn;
       }
       case 'z': {      //set a packet length for image transmission
         printf("(z###) z: length of old packet = %d pixels. ", Zlength);
-        Zlength=int(get_number(cmdString)) & 0xFFFE;       //make even
-        if(Zlength<=0) Zlength=320;
-        if(Zlength > 320){Zlength=80;printf(" z### exceeds 320 -> default = 80\n");}
-        if((Zlength+Xcolumn)>320) Zlength=320-Xcolumn;
+        Zlength=int(get_number(cmdString)) & -2;       //make even
+        if(Zlength<2) Zlength=320;
+        if(Zlength > 320){
+          Zlength=80;
+          printf(" z### exceeds 320 -> default = 80\n");
+        }
+        if((Zlength+Xcolumn)>320) { 
+          Zlength=320-Xcolumn;
+          printf("reset Zlength=%d ",Zlength);
+        }
         printf("New Zlength for USB image: %d pixels\n",Zlength);
         wait();
         break;
@@ -1325,7 +1347,7 @@ int bsn;
       }
     }       //end switch()
     newi2cCmd=false;        // be aware that this could clobber a fast follow up i2c command already received. 
-/***/IFI2C AS.print(" i2cCF ");   
+/***/IFI2C Spr(" i2cCF ");   
 }           //end processCmd()
         // ******************************
 
@@ -1387,9 +1409,9 @@ void new_camera_set(char C1,char C2){  //Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,A
           case 'P':               //WPC
             s->set_wpc(s, n);break;           // 0 = disable , 1 = enable   
           default:
-            AS.print("Unrecognised parameter\n");          
+            Spr("Unrecognised parameter\n");          
         }
-      else if(n<10)AS.print("invalid 'j' parameters\n");
+      else if(n<10)Spr("invalid 'j' parameters\n");
     }
  }      // ****************************** 
    
@@ -1460,16 +1482,16 @@ void write_img_sample(byte *imagePtr,int pitch,long offset,int nBytes ){
         if (i==12){                     //after bsNo 0 (4pixels wide) skip to offset (dispX?)
           k=imagePtr;                   //set k to actual image 
           z=k+offset+long(r*pitch);     //set z to 1st pix of S(bsn]
-/***/     AS.print(" offsetBytes ");AS.print(int(offset));        //print pixels 0-17 THEN offset pixels
-/***/     AS.print(" bsNo=");AS.print(offset/48/8);AS.print("/");AS.print((offset/48)%8);AS.print(" -> ");
+/***/     Spr(" offsetBytes ");Spr(int(offset));        //print pixels 0-17 THEN offset pixels
+/***/     Spr(" bsNo=");Spr(offset/48/8);Spr("/");Spr((offset/48)%8);Spr(" -> ");
         }
-        if(i==36) AS.print(".");    //end of offset sensor
-        if(*z<0x10)AS.print("0");
-        AS.print(*z,HEX); AS.print(" ");
-        if((i%3)==2)AS.print(" ");  //add space between pixels
+        if(i==36) Spr(".");    //end of offset sensor
+        if(*z<0x10)Spr("0");
+        Spr(*z,HEX); Spr(" ");
+        if((i%3)==2)Spr(" ");  //add space between pixels
         z=z+1;                      //set pointer z to next pixel to print
       }
-      AS.println(""); 
+      Serial.println(""); 
     }
 }      // ***************************** 
  
@@ -1517,15 +1539,15 @@ void grab_ref(int bsn, byte *iD, int pitch, long SensorPtr, byte *Ref, int *brig
       bright[0]=0;
       iD=iD+SensorPtr;  //sens points to first byte of sensor (top left pixel)
       for (i=0;i<pitch;i++) {  
-/***/   IFN {AS.print("+"); AS.print(int(iD[i]));} 
+/***/   IFN {Spr("+"); Spr(int(iD[i]));} 
         Ref[i]=iD[i];          // for RGB565, just need to copy sensor from Sensor666 to Sensor_Ref      
         bright[0] += iD[i];    // calculate new brightness value (sum of all sensor pixel colours)
       } 
-/***/ IFN {AS.print(" bright:");AS.println(bright[0]);}
+/***/ IFN {Spr(" bright:");Serial.println(bright[0]);}
       Compute_CRatios(iD, S666_row, 0L, Cratios, 2);   //iD has been advanced with iD=iD+SensorPtr; above
       bsnUpdated=bsn;
-/***/ IFN  {AS.print("bsn:");AS.print(bsn,OCT);AS.print(" Computed new Cratios, and brightness of ");AS.println(bright[0]);}
-/***/ IFN   AS.print(".......");
+/***/ IFN  {Spr("bsn:");Spr(bsn,OCT);Spr(" Computed new Cratios, and brightness of ");Serial.println(bright[0]);}
+/***/ IFN   Spr(".......");
 }   // ***************************** 
   
 // FUNCTION TO COMPARE SENSOR REF WITH LIVE IMAGE DATA
@@ -1544,8 +1566,8 @@ unsigned int Cratio[12]={0,0,0,0,0,0,0,0,0,0,0,0};    //128 x colour ratio (Equa
          //compute colour ratios for 3 colours in 4 quadrant from image and put in Cratio[0-11]
         Compute_CRatios(iD,pitch,SensorPtr,&Cratio[0],RGB565p);   //ratios for current image placed in Cratio[12]
 /***/   IF0 if(bsNo<13){
-/***/       AS.print("\nRefRatio("); AS.print(bsNo,OCT);AS.print("):");for (i=0;i<12;i++){AS.print(Ref[i]);AS.print(" ");} AS.println(' ');
-/***/       AS.print("Cratio(");AS.print(bsNo,OCT);AS.print("):  ");   for (i=0;i<12;i++){AS.print(Cratio[i]); AS.print(" ");}AS.println(' ');
+/***/       Spr("\nRefRatio("); Spr(bsNo,OCT);Spr("):");for (i=0;i<12;i++){Spr(Ref[i]);Spr(" ");} Serial.println(' ');
+/***/       Spr("Cratio(");Spr(bsNo,OCT);Spr("):  ");   for (i=0;i<12;i++){Spr(Cratio[i]); Spr(" ");}Serial.println(' ');
 /***/   }
         for (i=0;i<3;i++){      //convert Cratios to Xratios - do for each colour //max XRatio[] is 2016 & min is 32
           for (j=0;j<12;j+=3){  //do for each quadrant (have 3 colour ratios per quadrant)
@@ -1557,7 +1579,7 @@ unsigned int Cratio[12]={0,0,0,0,0,0,0,0,0,0,0,0};    //128 x colour ratio (Equa
         for (i=1;i<12;i++) if(Cratio[i]>maxDiff) maxDiff=Cratio[i];   //range 32 to 18360/4 (4590 max)
         
             //cross ratios should range from 32 to 2016
-/***/   IF0 {AS.print("Xratios(");AS.print(bsNo,OCT);AS.print("): ");for (i=0;i<12;i++){AS.print(Cratio[i]);AS.print(" ");}if(maxDiff>threshold)AS.print("Hi maxDiff ");AS.println(maxDiff);}
+/***/   IF0 {Spr("Xratios(");Spr(bsNo,OCT);Spr("): ");for (i=0;i<12;i++){Spr(Cratio[i]);Spr(" ");}if(maxDiff>threshold)Spr("Hi maxDiff ");Serial.println(maxDiff);}
         return maxDiff;         //from 32 to 2016 //>>3; could scale back to give 4 to 255 range for max(Cratio/32)
             // end of rgb565 colour ratio comparison       
 }    // *****************************    
@@ -1617,7 +1639,7 @@ int bsn;
             return bsn;
         }
     }
-    AS.print(" invalid bsNo\n");
+    Serial.print(" invalid bsNo\n");
     return -1;
 }      // *****************************
   
@@ -1657,17 +1679,32 @@ int r;     //row count
 int i;     //pixel count 
 int j;     //destination offset 
     for(sn=0;sn<80;sn++){    //decode all 80 Sensor images  
-        //for speed, might modify so only active sensors are decoded but this function only takes <400uSec 
-      iPtr1=imageData+Sensor[sn];   //point to start of sensor
-      for (r=0;r<4;r++) {           //do for four consecutive image lines/rows
-        if(r<2) iPtr=iPtr1+r*pitch;         //point to LHS of sensor
-        else    iPtr=iPtr1+(r+SEN_SIZE)*pitch;
-        j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)
-        for (i=0;i<4;i++){          //decode 4 pixels per sensor row
-          if(i<2) decode565(iPtr,long(i*2),&f666[j+i*3]);
-          else    decode565(iPtr,long((i+SEN_SIZE)*2),&f666[j+i*3]);
+     if(SensorActive[sn]){ //for speed, only active sensors decoded. This function only takes <400uSec for 80
+       iPtr1=imageData+Sensor[sn];   //point to start of sensor
+       if((pvtThreshold[sn]<0x80)||(pvtThreshold[sn]==255)){  //not linear sensor
+         for (r=0;r<4;r++) {           //do for four consecutive image lines/rows
+           if(r<2) iPtr=iPtr1+r*pitch;         //point to LHS of sensor
+           else    iPtr=iPtr1+(r+SEN_SIZE)*pitch;
+           j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)
+           for (i=0;i<4;i++){          //decode 4 pixels per sensor row
+             if(i<2) decode565(iPtr,long(i*2),&f666[j+i*3]);
+             else    decode565(iPtr,long((i+SEN_SIZE)*2),&f666[j+i*3]);
+           }
+         }
+      }else {   //treat as linear sensor
+        int lstepR =(pvtThreshold[sn]&0x7F)>>4;              //linear row step
+        int lstepX = pvtThreshold[sn]&0x0F;
+        if (lstepX>7) lstepX = -(lstepX&0x07); //negative step
+        for (r=0;r<4;r++) {           //do for four consecutive image (2x2) blobs 
+          iPtr=iPtr1+r*(lstepR*pitch+lstepX*2);
+          j=sn*S666_pitch+r*S666_row; //destination offset (e.g. sn*48+r*12)        
+          for (i=0;i<2;i++) {           //do for group of four image pixels
+            decode565(iPtr,long(pitch*i),&f666[j+i*6]);   //a row pair
+            decode565(iPtr,long(pitch*i+2),&f666[j+i*6+3]); 
+          }
         }
       }    
+     }
     }
     return true;            //return converted (or number of converted active sensors?)       
 }       // ***************************** 
@@ -1700,8 +1737,6 @@ int S666init_SensorRefs(int prefill){
 //  FUNCTION TO EVALUATE MAXDIFF & OTHER MEASUREMENTS TO SET SENSOR STATE TRUE/FALSE OCCUPIED/UN-OCCUPIED 
 bool processDiff(int bsn){
       // bsn Block sensor number for status evaluation
-/*  int SensorHisto[80*5];       //make global   
-    int SensorHiCount[80];      */
     int SenHiCnt;
     int Threshold;
 
@@ -1719,7 +1754,7 @@ bool processDiff(int bsn){
           if (i2cDatai<56)i2cDatai += 2;        //increment provided within buffer limit(58) (may corrupt last bsn)   
         }
         Threshold = pvtThreshold[bsn];
-        if (Threshold==255) Threshold=threshold;
+        if (Threshold>=128) Threshold=threshold;  //may hold a linear sensor sizing
         if (bpd < Threshold) {    //low diff thinks unoccupied
         
           if(SensorHiCount[bsn]>0){          //If had some recent hi's, update histogram
@@ -1732,11 +1767,11 @@ bool processDiff(int bsn){
           if(SensorFilter[bsn]>0){ SensorFilter[bsn]-=1;        //only clear block bit after 2nd or 3rd "unoccupied"
  /***/      if(bsn<maxSensors){ i2cData[i2cDatai-2] |= 0x80;    //flag as uncertain for i2c
               IFS {
-                if(bsn<8)AS.print("0");
-                AS.print(bsn,OCT);{if(bpd>99)AS.print(":?"); else AS.print(":?_");}
-                AS.print(bpd);             
-                if(SensorStat[bsn]){AS.print(OCc);AS.print(OCc);if(OCc!=char(12))AS.print('*');AS.print(" ");} //Ch(12) Arduino font 1.5 times width!
-                else AS.print("_?* ");
+                if(bsn<8)Spr("0");
+                Spr(bsn,OCT);{if(bpd>99)Spr(":?"); else Spr(":?_");}
+                Spr(bpd);             
+                if(SensorStat[bsn]){Spr(OCc);Spr(OCc);if(OCc!=char(12))Spr('*');Spr(" ");} //Ch(12) Arduino font 1.5 times width!
+                else Spr("_?* ");
               }
             }
           }else{        //sustained LOW, so set UN-OCCUPIED
@@ -1744,7 +1779,7 @@ bool processDiff(int bsn){
             SensorBlockStat[b]= SensorBlockStat[b] & ~mask[bsn&7]; //clear SensorBlock bit
             if(SensorBlockStat[b]==0) setLED(b,false);             //if whole block unoccupied, clear LED
 /***/       if(bsn<maxSensors){
-              IFS {if(bsn<8)AS.print("0");AS.print(bsn,OCT);AS.print(":--");AS.print(bpd);AS.print("--* ");}
+              IFS {if(bsn<8)Spr("0");Spr(bsn,OCT);Spr(":--");Spr(bpd);Spr("--* ");}
             }
           }
         }else{          //high diff thinks OCCUPIED
@@ -1752,9 +1787,9 @@ bool processDiff(int bsn){
           if(SensorFilter[bsn]<0){ SensorFilter[bsn]+=1;        //only clear block bit after 2nd or 3rd "occupied"
 /***/       if(bsn<maxSensors){i2cData[i2cDatai-2] |= 0x80;     //flag as undecided for i2c
               IFS{ 
-                if(bsn<8)AS.print("0");
-                AS.print(bsn,OCT);{if(bpd>99)AS.print(":?"); else AS.print(":?_");}
-                AS.print(bpd);AS.print("_?* ");
+                if(bsn<8)Spr("0");
+                Spr(bsn,OCT);{if(bpd>99)Spr(":?"); else Spr(":?_");}
+                Spr(bpd);Spr("_?* ");
               }
             }
           }else{        //sustained HIGH, so set OCCUPIED (if Twin agrees) 
@@ -1766,24 +1801,24 @@ bool processDiff(int bsn){
               if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;    //flag as occupied for i2c
                 emptyStateCtr[bsn]=0;                             //clear "untripped" counter
 /***/           IFS{
-                  if(bsn<8)AS.print("0");
-                  AS.print(bsn,OCT);{if(bpd>99)AS.print(":o"); else AS.print(":oo");}
-                  AS.print(bpd);AS.print(OCc);AS.print(OCc);if(OCc!=char(12))AS.print('*'); AS.print(' ');
+                  if(bsn<8)Spr("0");
+                  Spr(bsn,OCT);{if(bpd>99)Spr(":o"); else Spr(":oo");}
+                  Spr(bpd);Spr(OCc);Spr(OCc);if(OCc!=char(12))Spr('*'); Spr(' ');
                 }
               }
             }else{      //twin disagrees            
               if(bsn<maxSensors){
                 IFS{
-                  if(bsn<8)AS.print("0");
-                  AS.print(bsn,OCT);{if(bpd>99)AS.print(":o"); else AS.print(":oo");}
-                  AS.print(bpd);AS.print("?T* ");
+                  if(bsn<8)Spr("0");
+                  Spr(bsn,OCT);{if(bpd>99)Spr(":o"); else Spr(":oo");}
+                  Spr(bpd);Spr("?T* ");
                 }
               }
             }
           }
         }
-        IF0 {AS.print(SensorFilter[bsn]);AS.print(' ');AS.print(maxDiff);AS.print('+');AS.print(bright);AS.print('=');AS.print(maxDiff+bright);}  
-        IF0 AS.println(' ');
+        IF0 {Spr(SensorFilter[bsn]);Spr(' ');Spr(maxDiff);Spr('+');Spr(bright);Spr('=');Spr(maxDiff+bright);}  
+        IF0 Serial.println(' ');
         return SensorStat[bsn];
 }   // ***************************** 
       
@@ -1812,9 +1847,9 @@ byte i2cIncoming[13];         //use to hold translated command. longest: k%%,123
           if((i!=0)&& !newi2cCmd){         //only accept if no newi2cCmd being processed   
             newi2cCmd=true;
             for (j=0; j<13; j++) i2cCmd[j]=i2cIncoming[j];
-/***/       IFI2C AS.print(":@:");    
+/***/       IFI2C Spr(":@:");    
           }
-/***/     IFI2C  if(i>0) {Serial.print(i,HEX);Serial.print(char(i2cCmd[0]));AS.print(newi2cCmd);}
+/***/     IFI2C  if(i>0) {Serial.print(i,HEX);Serial.print(char(i2cCmd[0]));Spr(newi2cCmd);}
           return;            
        }                                    //end of i2cReceive iff EX-CS 
        if(!newi2cCmd) { newi2cCmd=true;     //skip new command if old one not yet finished.
@@ -1856,8 +1891,8 @@ byte i2cIncoming[13];         //use to hold translated command. longest: k%%,123
 	     }       
        i2cCmd[i]='\n';            //ensure ends with newline
        newi2cCmd=true;            //set a flag for "loop()" to process cmd as if from USB
-/***/  IFT AS.print(len); 
-/***/  IFT AS.println(" bytes onReceive");     //debug to USB
+/***/  IFT Spr(len); 
+/***/  IFT Serial.println(" bytes onReceive");     //debug to USB
        digitalWrite(FLASHLED,LOW);
 }   // *****************************  
 
@@ -1874,7 +1909,7 @@ void i2cRequest(){                             //function to handle i2c request 
           if(!isDigit(i)) i=0x39;   //default "b " & "p " to "b9" & "p9"          
           i=i2cPrepare((char)i2cCmd[0],(char)i2cCmd[1],(char *)dataPkt);    //make an up-to-date datapkt
           numWritten=MyWire.write(dataPkt,i);               //update onRequest buffer (write won't stop at first NUL char!)   
-/***/    IFD AS.print("written:");AS.println(numWritten);
+/***/    IFD Spr("written:");Serial.println(numWritten);
           break;
         case 'd':               //NOTE: master should request data 3 times to try to flush false values
           if(isDigit(i)) {      //loop() updates dMaxDiff & dBright only once every 100mSec
@@ -1916,9 +1951,9 @@ void i2cRequest(){                             //function to handle i2c request 
              dataPkt[i]=dataPkt[i+32];dataPkt[i+32]=dataPkt[i+64];dataPkt[i+64]=dataPkt[i+96];
           }break; 
         default:             //if invalid onReceive Cmd, onRequest returns dud i2cCmd as data packet
-          MyWire.write(0xFE);       //return header byte as Error flag 0xFE(254.)    
+          MyWire.write(CAMERR);       //return header byte as Error flag 0xFE(254.)    
           MyWire.write(i2cCmd);     //send back (preload) old ASCII received data packet. 
-          AS.print("onRequest dud command preloaded. ");AS.println(i2cCmd[0],HEX);
+          Spr("onRequest dud command preloaded. ");Serial.println(i2cCmd[0],HEX);
        } 
 }   // ***************************** 
 
@@ -1945,7 +1980,7 @@ const int numDigBytes=(NUMdigPins+7)>>3;
         datapk[0]=EXIOPINS;
         datapk[1]=NUMdigPins;
         datapk[2]=NUManalogPins;
-   //     MyWire.write(datapk,3);     //preload onRequest buffer      // ######
+ //       MyWire.write(datapk,3);     //preload onRequest buffer      // ######
         return 0;                 
 
       case EXIOINITA:                 //EXIOINITA(0xE8)initialise analog & return map onRequest
@@ -1993,22 +2028,13 @@ const int numDigBytes=(NUMdigPins+7)>>3;
       case EXIODPUP:                  //EXIODPUP(0xE2) pin pullup     USE (1) for 'a' or (0) 'r'  
         datapk[0]=EXIORDY;        
 //        MyWire.write(datapk,1);      //preload onRequest buffer      // ######
- /*       if (i2cCmdBuf[2]==1) i2cCmdBuf[0]='a';
-        else i2cCmdBuf[0]='r';     
-        i2cCmdBuf[2]=0x30+(i2cCmdBuf[1]&&0x07);    //sensor
-        i2cCmdBuf[1]=0x30+(i2cCmdBuf[1]>>3);        //block 
-        return 3;
- */     return 0;   
-
-/*      case EXIORDAN:                    //EXIORDAN(0xE4) Read full set analogue values (@20Hz)
-        for(int i=0;i<2*NUManalogPins;i+=2) {datapk[i]=i;datapk[i+1]=0;}  // test pattern only for now
-        MyWire.write(datapk,NUManalogPins*2);  //preload onRequest buffer // ###### 
-        return 0;
- */             
-      case EXIORDAN:                  //EXIORDAN(0xE4) Read full set analogue values (@20Hz)**duplicate RDD**
+        return 0;   
+             
+ //     case EXIORDAN:                  //EXIORDAN(0xE4) Read full set analogue values (@20Hz)**duplicate RDD**
       case EXIORDD:                   //EXIORDD(0xE6)read ALL digital bits (@100Hz)
-        for (int a=0;a<2*NUManalogPins;a+=2){datapk[a]=byte(a); datapk[a+1]=0;}        //dummy values for now
-        for (int b=0;b<numDigBytes;b++)  datapk[b] =  SensorBlockStat[b];
+        datapk[0] = EXIORDD;              //new header (ver 200+)
+        for (int b=0;b<numDigBytes;b++)  datapk[b+1] =  SensorBlockStat[b];
+        datapk[1] = datapk[1] & 0xBF;  //clear S06 bit to aid CS bad packet identification
    //     MyWire.write(datapk,(NUMdigPins+7)>>3);    //preload onRequest buffer      // ######     
         return 0;
 
@@ -2024,8 +2050,8 @@ const int numDigBytes=(NUMdigPins+7)>>3;
         valu=i2cCmdBuf[4];            //profile
         if(valu<240) {      //treat as an 'a' request if y looks like a row
           valu=int(i2cCmdBuf[3]*256+i2cCmdBuf[2]);
-/***/     IFI2C {        AS.print(int(i2cCmdBuf[1]),DEC); AS.print(' ');AS.print(valu);
-/***/       AS.print(' ');AS.print(int(i2cCmdBuf[4])); AS.print(' ');AS.println(i2cCmdBuf[5]+i2cCmdBuf[6]*256);}        
+/***/     IFI2C {        Spr(int(i2cCmdBuf[1]),DEC); Spr(' ');Spr(valu);
+/***/       Spr(' ');Spr(int(i2cCmdBuf[4])); Spr(' ');Serial.println(i2cCmdBuf[5]+i2cCmdBuf[6]*256);}        
           y=i2cCmdBuf[4];                     //get row
           i2cCmdBuf[4]=byte((y/100) | 0x30);  //extract row
           y=y%100;
@@ -2053,7 +2079,6 @@ const char cmds[]={'o','l','a','n','r','s','u','F','-','-','\n','w','g','e','m',
            i2cCmdBuf[2]=(valu%10) | 0x30;   //treat valu as bsNo not bsn
            i2cCmdBuf[1]=(valu/10) | 0x30;
            i2cCmdBuf[0]=cmds[cmdNo];
-/***/   //  Spr(x); Spr(" from CS \n");
            if((cmdNo==4)&& (x>100)){        //r%%*
              i2cCmdBuf[3]='*'; 
              return 4;
@@ -2123,14 +2148,10 @@ void i2cExpanderRequest(byte cmd,byte *datapk){
       case EXIODPUP:              //0xE2 -> EXIORDY
         MyWire.write(datapk,1);   //preload onRequest buffer      // ######
         break;
-
- /*  case EXIORDD:               //0xE6 -> 1+NUMdigPins/8 bytes
-        MyWire.write(datapk,1+NUMdigPins/8);   //preload onRequest buffer      // ######  
-        break; 
- */    
+   
       case EXIORDD:               //0xE6 -> 1+NUMdigPins/8 bytes + spare analog
       case EXIORDAN:              //0xE4 -> 2*NUManalogPins
-        MyWire.write(datapk,numDigBytes);  //preload onRequest buffer // ######
+        MyWire.write(datapk,numDigBytes+1);  //preload onRequest buffer // ######
         break;
       
       case EXIOENAN:              //0xE7 -> EXIORDY
@@ -2168,7 +2189,7 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
             i2cparity = i2cparity ^ SensorBlockStat[blk];    //exclusive OR parity generation.
           }
           datapk[2+block]=i2cparity;  //   ;MyWire.write(i2cparity); //xor parity byte for preceeding $+1 bytes
- /***/    IFI2C { for (blk=0;blk<(block+3);blk++) {AS.print(datapk[blk],HEX);AS.print(" ");} AS.println(" ");}
+ /***/    IFI2C { for (blk=0;blk<(block+3);blk++) {Spr(datapk[blk],HEX);Spr(" ");} Serial.println(" ");}
           return block+3;             //return byte count
         }
         case 'i':{            //i%%:  //write state of sensor %/%   
@@ -2237,7 +2258,7 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
 
 //  FUNCTION TO FLASH LED
 void flashLed(int pulse){       //flash <pulse> uSec long
-unsigned int flash;             // *assumes FLASHLED,OUTPUT
+unsigned long flash;             // *assumes FLASHLED,OUTPUT
         digitalWrite(FLASHLED, HIGH); //turn on flash
         flash=micros()+pulse; 
         while(flash>micros()){}       //delay <pulse> uSec for bright white flashLed
@@ -2251,7 +2272,7 @@ static bool ConnectWifi(const char *_ssid, const char *wifipass){
   uint8_t wifiAttempts = 0;
   while (WiFi.status() != WL_CONNECTED && wifiAttempts < 20)
   {
-    AS.print(".");
+    Spr(".");
     delay(1000);
     if(wifiAttempts == 10)
     {
@@ -2263,9 +2284,9 @@ static bool ConnectWifi(const char *_ssid, const char *wifipass){
   if (WiFi.status() == WL_CONNECTED)
   {
     WiFi.setAutoReconnect(true);    //Not necessary
-    AS.println();//Not necessary
-    AS.print("Connected with IP: ");//Not necessary
-    AS.println(WiFi.localIP());     //Not necessary
+    Serial.println();//Not necessary
+    Spr("Connected with IP: ");//Not necessary
+    Serial.println(WiFi.localIP());     //Not necessary
     return true;
   }
   else
@@ -2328,12 +2349,12 @@ byte  newref[48];
               }
               if (averageRcounter==0) {         //now process into Sensor_ref[]         //includes new Cratios & brightness calculations
                 grab_ref(n,newref,48,0L,&Sensor_ref[n*48],&Sen_Brightness_Ref[n],&SensorRefRatio[n*12]);  //includes new Cratios & bright   
-/***/           IFN {AS.print(" Have set _ref[");AS.print(n,OCT);AS.print("] to average values.  _ref[0] & _ref[bsn] below:\n");}
+/***/           IFN {Spr(" Have set _ref[");Spr(n,OCT);Spr("] to average values.  _ref[0] & _ref[bsn] below:\n");}
 /***/           IFN if(AVbsn!=0) write_img_sample(Sensor_ref,12,AVbsn*48,24);      //print _ref[00] and (av) _ref[bsn]
               }          
             }
       }        
-  //    if (averageRcounter==0) AS.print(".......");
+  //    if (averageRcounter==0) Spr(".......");
       autoRefSuspended = false;                     //allow auto referencing to resume
 }  // *****************************
 
@@ -2375,7 +2396,7 @@ void av2frames(int bsn){          //byte RingBuff[2*80*16*3];
 void wait(){
 //stops looping indefinitely until input a newline (\n) from USB or i2c  
        printf("Waiting - press 'Enter' to continue\n");
-       while (!AS.available() && !newi2cCmd) {
+       while (!Serial.available() && !newi2cCmd) {
          if((micros()-starttime)>CYCLETIME) starttime += CYCLETIME;  //handles 71min overflow
        }
 }  // *****************************
@@ -2416,7 +2437,7 @@ void boxIt(unsigned long Point,int BSno){           //Use sensor() pointer into 
 void refRefresh(bool suspend){     
           //if suspend false, sequentially calculate new ref image for each enabled & vacant sensor
     if (!lastsuspend&&suspend) lastsuspend=true;
-    if ( lastsuspend&&suspend) { AS.print("SUS "); return; } 
+    if ( lastsuspend&&suspend) { Spr("SUS "); return; } 
     if ( lastsuspend&&!suspend) {         //on transition to !suspend, dump all averaging and restart               
       lastsuspend=false;                  
       for (int i=0;i<80;i++) emptyStateCtr[i]= 0;   //initialise for reference averaging
