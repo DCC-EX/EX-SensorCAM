@@ -285,9 +285,6 @@ The configuration file for DCC-EX Command Station
 #define SENSORCAM_VPIN0 700
 // For shortcut to vPin number, define CAM for ex-rail use e.g. AT(CAM 012) for S12 etc.
 #define CAM SENSORCAM_VPIN0+
-//
-// driver assumes ESP32 device not above ESP32CAP and standard EXIOExpander devices above
-// CAP may be raised above default of 0x12 
-//#define ESP32CAP 0x12
+
 
 /////////////////////////////////////////////////////////////////////////////////////

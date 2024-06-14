@@ -10,7 +10,7 @@ int CAMbasevPin = SENSORCAM_VPIN0;
 
 void myFilter(Print * stream, byte & opcode, byte & paramCount, int16_t p[])
 {
-  const char cmds[16]={'o','l','a','n','r','s','u','f','i','t','x','w','g','e','m','v'};
+  const char cmds[17]={'b','o','l','a','n','r','s','u','f','i','t','x','w','g','e','m','v'};
   int16_t param1;
   int16_t param2;
   uint8_t param3;
@@ -20,8 +20,8 @@ void myFilter(Print * stream, byte & opcode, byte & paramCount, int16_t p[])
     if (paramCount == 1){ 
       param3 = p[0];      
       for(i=0;i<sizeof(cmds);i++) 
-	    if(cmds[i]==(param3+0x20)) param3=i+240;  //convert ascii to code
-      DIAG(F("CAM: %c =%d"), cmds[param3%240], param3);
+	      if(cmds[i]==(param3+0x20)) param3=i+239;  //convert ascii to code
+      DIAG(F("CAM: %c =%d"), cmds[param3%239], param3);
       IODevice::writeAnalogue(CAMbasevPin, 0, param3);     
     }
     if(paramCount == 2){ 
@@ -31,8 +31,8 @@ void myFilter(Print * stream, byte & opcode, byte & paramCount, int16_t p[])
       }else{  
         param2 = p[1];
         param3 = p[0];
-        for(i=0;i<sizeof(cmds);i++) if(cmds[i]==param3+0x20) param3=i+240;     //convert ascii to code
-        DIAG(F("CAM: %c %d "), cmds[param3%240], param2);     
+        for(i=0;i<sizeof(cmds);i++) if(cmds[i]==param3+0x20) param3=i+239;     //convert ascii to code
+        DIAG(F("CAM: %c %d "), cmds[param3%239], param2);     
         IODevice::writeAnalogue(CAMbasevPin, param2, param3); 
       }    
     }
