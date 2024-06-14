@@ -1,4 +1,4 @@
-# Video Based Multi Channel Position Sensing Camera
+-SensorCAM# Video Based Multi Channel Position Sensing Camera
 ## Introduction
 This single camera is capable of replacing up to 80 detectors/sensors on a model railroad along with their extensive wiring.
 As it is a cheap device, on large railroads, several cameras can be used for adequate coverage. 
