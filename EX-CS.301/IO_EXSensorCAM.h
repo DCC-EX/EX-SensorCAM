@@ -105,9 +105,13 @@ void _begin() {
          // for ESP32 CAM, read again for good immediate response version data
         status = I2CManager.read(_I2CAddress, _inputBuf, sizeof(_inputBuf), commandBuffer, 1);
         
-        if (status == I2C_STATUS_OK) 
+        if (status == I2C_STATUS_OK) {
+          _majorVer= _inputBuf[1]/10;	
+          _minorVer= _inputBuf[1]%10;
+          _patchVer= _inputBuf[2];				
           DIAG(F("EX-SensorCAM device found, I2C:%s, Version v%d.%d.%d"),
-                       _I2CAddress.toString(),_inputBuf[1]/10, _inputBuf[1]%10,_inputBuf[2]); //offset +1 ?    
+                       _I2CAddress.toString(),_majorVer, _minorVer,_patchVer);
+        }  	
       }
       if (status != I2C_STATUS_OK)
         reportError(status);
@@ -356,6 +360,14 @@ void _writeAnalogue(VPIN vpin, int16_t param1, uint8_t camop, uint16_t param3) o
     }
 }
 //*************************
+ // Display device information and status.
+  void _display() override {
+    DIAG(F("EX-SensorCAM I2C:%s v%d.%d.%d Vpins %u-%u %S"),
+              _I2CAddress.toString(), _majorVer, _minorVer, _patchVer,
+              (int)_firstVpin, (int)_firstVpin+_nPins-1,
+              _deviceState == DEVSTATE_FAILED ? F("OFFLINE") : F(""));
+  }
+//*************************
 // Helper function for error handling
 void reportError(uint8_t status, bool fail=true) {
   DIAG(F("EX-SensorCAM I2C:%s Error:%d (%S)"), _I2CAddress.toString(), 
@@ -366,6 +378,10 @@ void reportError(uint8_t status, bool fail=true) {
   uint8_t _numDigitalPins = 80;   
   size_t  digitalBytesNeeded=10;
   uint8_t _CAMresponseBuff[34];
+  
+  uint8_t _majorVer = 0;
+  uint8_t _minorVer = 0;
+  uint8_t _patchVer = 0;
 
   uint8_t _digitalInputStates[10];
   I2CRB _i2crb;
