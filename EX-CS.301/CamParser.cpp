@@ -12,32 +12,33 @@
 #define SENSORCAM2_VPIN CAM_VPIN
 #endif
 #ifndef SENSORCAM3_VPIN 
-#define SENSORCAM3_VPIN CAM_VPIN
+#define SENSORCAM3_VPIN 0
 #endif
 const int CAMVPINS[] = {CAM_VPIN,SENSORCAM_VPIN,SENSORCAM2_VPIN,SENSORCAM3_VPIN};
+const int16_t version=9914;
+const int16_t ver=30177;
+const int16_t ve =2899;
 
 VPIN EXSensorCAM::CAMBaseVpin = CAM_VPIN;
 
-bool CamParser::parseN(Print * stream, byte paramCount, int16_t p[])
-{
-  (void)stream; // probably unused parameter 
- // DIAG(F("cam (%d) %c=%d %d %d"),paramCount,p[0],p[0],p[1],p[2],p[3]);
-  
-  if (EXSensorCAM::CAMBaseVpin==0) return false; // no cam found
-	if (paramCount == 0) return false; 
-	VPIN vpin=EXSensorCAM::CAMBaseVpin;
-	byte camop=p[0]; // cam oprerator 
- // send UPPER case to sensorCAM to flag binary data from a DCCEX-CS 
+bool CamParser::parseN(Print * stream, byte paramCount, int16_t p[]) {
+  (void)stream;  // probably unused parameter 
+  VPIN vpin=EXSensorCAM::CAMBaseVpin;   //use current CAM selection
+
+  if (paramCount==0) { 
+    DIAG(F("vpin:%d EXSensorCAMs defined at Vpins #1@ %d #2@ %d #3@ %d"),vpin,CAMVPINS[1],CAMVPINS[2],CAMVPINS[3]);
+    return true; 
+  }
+  uint8_t camop=p[0]; // cam oprerator 
   int16_t param1=0;
-  int16_t param3=9999;   // =0 could invoke parameter changes.
-  if((p[0] == 2899) || (p[0] == 30177) || (p[0] == 9914)) camop='^';  //accepts <N ve[r]>
+  int16_t param3=9999;   // =0 could invoke parameter changes. & -1 gives later errors
 
   if(camop=='C'){ 
     if(p[1]>=100) EXSensorCAM::CAMBaseVpin=p[1];
-    DIAG(F("CAM base vpin: %c %d "),p[0],EXSensorCAM::CAMBaseVpin);
+    if(p[1]<4) EXSensorCAM::CAMBaseVpin=CAMVPINS[p[1]];
+    DIAG(F("CAM base Vpin: %c %d "),p[0],EXSensorCAM::CAMBaseVpin);
     return true;
   }
-  
   if (camop<100) {               //switch CAM# if p[1] dictates
     if(p[1]>=100 && p[1]<400) {  //limits to CAM# 1 to 3 for now
       vpin=CAMVPINS[p[1]/100];
@@ -46,28 +47,29 @@ bool CamParser::parseN(Print * stream, byte paramCount, int16_t p[])
       p[1]=p[1]%100;             //strip off CAM #
     } 
   }
+  if (EXSensorCAM::CAMBaseVpin==0) return false; // no cam defined 
 
+  if((p[0] == ve) || (p[0] == ver) || (p[0] == version)) camop='^';
+      // send UPPER case to sensorCAM to flag binary data from a DCCEX-CS parser  
   switch(paramCount) {    
-
     case 1:                          //<N ver> produces '^' 
       if (strchr_P((const char *)F("EFGMRVW^"),camop) == nullptr) return false;
-      if (camop=='F') camop=']';     //<NF> for Finish/Reset CAM coded as ']' else conflicts with <Nf %%>
-      break;
+      if (camop=='F') camop=']';     //<NF> for Reset/Finish webCAM.
+      break;    // Coded as ']' else conflicts with <Nf %%>
     
     case 2:                          //<N camop p1>  
-      if (strchr_P((const char *)F("ABFILMNOPRSTUV"),camop)==nullptr)return false;
+      if (strchr_P((const char *)F("ABFILMNOPRSTUV^"),camop)==nullptr) return false;
       param1=p[1];
       break;
     
-    case 3:              //<N  vpin rowY colx > or <N cmd p1 p2>
+    case 3:              //<N vpin rowY colx > or <N cmd p1 p2>
       camop=p[0];
       if (p[0]>=100) {   //vpin - i.e. NOT 'A' through 'Z'
         if (p[1]>236 || p[1]<0) return false;     //row
         if (p[2]>316 || p[2]<0) return false;     //column
         camop=0x80;      // special 'a' case for IO_SensorCAM
         vpin = p[0];
-      } else 
-        if (strchr_P((const char *)F("IJMNT"),camop) == nullptr) return false; 
+      }else if (strchr_P((const char *)F("IJMNT"),camop) == nullptr) return false; 
       param1 = p[1];  
       param3 = p[2];
       break;
