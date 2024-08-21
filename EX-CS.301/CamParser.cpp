@@ -74,7 +74,7 @@ bool CamParser::parseN(Print * stream, byte paramCount, int16_t p[]) {
       param3 = p[2];
       break;
     
-    case  4:         //<N a id row col> 
+    case 4:         //<N a id row col> 
       if (camop!='A') return false;          //must start with 'a' 
       if (p[3]>316 || p[3]<0) return false;
       if (p[2]>236 || p[2]<0) return false;

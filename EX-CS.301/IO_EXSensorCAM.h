@@ -242,7 +242,7 @@ int processIncomingPkt(uint8_t *rBuf,uint8_t sensorCmd) {
 
     case '~':      //information from '^' version request <N ve[r]>
       DIAG(F("EX-SensorCAM device found, I2C:%s,CAM Version v%d.%d.%d vpins %u-%u"),
-              _I2CAddress.toString(), 0, rBuf[1], rBuf[2],(int) _firstVpin, (int) _firstVpin +_nPins-1);
+              _I2CAddress.toString(), rBuf[1]/10, rBuf[1]%10, rBuf[2],(int) _firstVpin, (int) _firstVpin +_nPins-1);
       DIAG(F("IO_EXSensorCAM driver  v0.%d.%d vpin: %d "), driverVer/100,driverVer%100,_firstVpin);
       break;
 
@@ -253,12 +253,12 @@ int processIncomingPkt(uint8_t *rBuf,uint8_t sensorCmd) {
       break;
 
     case 'm':
-      DIAG(F("(m$[,##]) Min/max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, threshold %d, TWOIMAGE_MAXBS 0%o")
-	          ,rBuf[1],rBuf[3],rBuf[2],rBuf[4],rBuf[5],rBuf[6]);                                                               								
+      DIAG(F("(m$[,##]) Min/max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d,"
+              " threshold %d, TWOIMAGE_MAXBS 0%o"),rBuf[1],rBuf[3],rBuf[2],rBuf[4],rBuf[5],rBuf[6]);                                                               								
       break;
 
     case 'n':
-      DIAG(F("(n$[,##]) Nominate: $ nLED %d, ## minSensors 0%o (maxsensors 0x%o threshold %d)")
+      DIAG(F("(n$[,##]) Nominate: $ nLED %d, ## minSensors 0%o (maxSensors 0%o threshold %d)")
                                        ,rBuf[4],rBuf[2],rBuf[3],rBuf[5]);                                                               
       break;
 
@@ -274,8 +274,8 @@ int processIncomingPkt(uint8_t *rBuf,uint8_t sensorCmd) {
 
     case 'p':
       b=rBuf[1]-2;
-      if(b<4) { Sp("<n (p%%) Block empty  n>\n"); break; }
-      Sp("<n (p%%) Block:"); Sp((0x7F&rBuf[2])/8); Sp(" ");
+      if(b<4) { Sp("<n (p%%) Bank empty  n>\n"); break; }
+      Sp("<n (p%%) Bank:"); Sp((0x7F&rBuf[2])/8); Sp(" ");
       for (int j=2; j<b; j+=3) { 
         if(0x7F&rBuf[j] < 8) Sp(" S[0"); else Sp(" S[");
         Sp(0x7F&rBuf[j],OCT);Sp("]: r=");Sp(rBuf[j+1]);Sp(" x=");Sp(rBuf[j+2] + 2*(rBuf[j] & 0x80)); 

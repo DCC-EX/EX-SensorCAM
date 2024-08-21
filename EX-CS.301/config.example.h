@@ -285,11 +285,11 @@ The configuration file for DCC-EX Command Station
 // For shortcut to vPin number, define CAM for ex-rail use e.g. AT(CAM 012) for S12 etc.
 #define CAM SENSORCAM_VPIN+
 
-#define SENSORCAM2_VPIN 600   //define other CAM's if installed.
-#define CAM2 SENSORCAM2_VPIN+ //for EX-RAIL commands e.g. IFLT(CAM2 020,1)1
+//#define SENSORCAM2_VPIN 600   //define other CAM's if installed.
+//#define CAM2 SENSORCAM2_VPIN+ //for EX-RAIL commands e.g. IFLT(CAM2 020,1)1
 //
 // For smoother power-up, define a STARTUP_DELAY to allow CAM to initialise ref images
-//#define STARTUP_DELAY 20000  // 20sec. CS delay
+#define STARTUP_DELAY 5000  // up to 20sec. CS delay
 
 
 /////////////////////////////////////////////////////////////////////////////////////
