@@ -4,6 +4,9 @@
 #include "FSH.h"
 #include "IO_EXSensorCAM.h"
 
+#ifndef STRCHR_P       //define for Arduino AVR
+#define STRCHR_P strchr_P     
+#endif
 #ifndef SENSORCAM_VPIN       //define CAM vpin (700?) in config.h
 #define SENSORCAM_VPIN 0     
 #endif
