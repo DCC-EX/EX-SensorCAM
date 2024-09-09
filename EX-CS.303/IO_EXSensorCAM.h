@@ -231,7 +231,7 @@ int processIncomingPkt(uint8_t *rBuf,uint8_t sensorCmd) {
     case '`':      //response to request for digitalInputStates[] table  '@'=>'`'  
       memcpy(_digitalInputStates, rBuf+1, digitalBytesNeeded);
       if ( _digitalInputStates[0]!=oldb0) { oldb0=_digitalInputStates[0];  //debug
-        for (k=0;k<5;k++) {Serial.print(" ");Serial.print(_digitalInputStates[k],HEX);}
+       // for (k=0;k<3;k++) {Serial.print(_digitalInputStates[k],HEX);Serial.print(" ");}
       }break;                                                 
 
     case EXIORDY:  //some commands give back acknowledgement only
@@ -347,18 +347,18 @@ void _writeAnalogue(VPIN vpin, int param1, uint8_t camop, uint16_t param3) overr
     if(camop=='B'){   //then 'b'(b%) cmd - can totally deal with that here. (but can't do b%,# (brightSF))
       if(param1>97) return;
       if(param1>9) param1 = param1/10;  //accept a bsNo
-      for(param1;param1<count;param1++) {
-        uint8_t b=_digitalInputStates[param1];
+      for(int bnk=param1;bnk<count;bnk++) {
+        uint8_t b=_digitalInputStates[bnk];
         char str[] = "11111111";
         for (int i=0;i<8;i++) if(((b<<i)&0x80) == 0) str[i]='0';
-        DIAG(F("(b $) Bank: %d activated byte: 0x%x%x (sensors S%d7->%d0) %s"), param1,b>>4,b&15,param1,param1,str ); 
+        DIAG(F("(b $) Bank: %d activated byte: 0x%x%x (sensors S%d7->%d0) %s"), bnk,b>>4,b&15,bnk,bnk,str ); 
       }
       return;
     } 
     if (outputBuffer[4]=='T') {   //then 't' cmd
       if(param1<31) {   //repeated calls if param < 31
           //for (int i=0;i<7;i++) _savedCmd[i]=outputBuffer[i];
-        memcpy( _savedCmd, outputBuffer, 8);
+        memcpy( _savedCmd, outputBuffer, 7);
       }else _savedCmd[2] = 0;   //no repeats if ##>30 
     }else _savedCmd[2] = 0;       //no repeats unless 't'
   
