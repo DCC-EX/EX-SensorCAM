@@ -1,7 +1,7 @@
 //sensorCAM Alpha release                                                                                 limit >|
 #define BCDver 307
-    //v307 getting line sensors cmd '/' and '\' working optimally
-    //v306 pvtThreshold for S00 & linear banks. 'a' now clears pvtThreshold. Create linear '/'&'\' 
+    //v307 getting line sensors cmd '/' and '\' working optimally.  'v' for version, v1 for video
+    //v306 pvtThreshold for S00 & linear banks. 'a' now clears pvtThreshold. Create linear '/' & '\' 
     //v305 more minor code neatening & array initialisation. Correct Linear stepR calculation
     //v304 move globals to static functions where possible
     //v303 start localising variables. check r00 malfunction & adjust "i2c cmd:" display
@@ -1270,10 +1270,10 @@ int bsn=0;
         break;
       }
       case 'v':{      //v#;  reboot & select video webserver mode                
-        if(cmdString[1]=='e') {printf("CAM software version (BCDver): %d\n",BCDver); wait(); break;}
+        if((cmdString[1]<'1')||(cmdString[1]>'2')) {printf("CAM software version (BCDver): %d\n",BCDver); wait(); break;}
         int wifi=1;     //identify default wifi router (1 or 2)
-        if(isDigit(cmdString[1])) wifi=cmdString[1]-0x30;  //set choice of wifi connections (1-9)       
-        printf("(v [2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
+        if(cmdString[1]<'3') wifi=cmdString[1]-0x30;  //set choice of wifi connections       
+        printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
         printf("Waiting - press 'Enter' to trigger reset\n");
         while (!Serial.available() && !newi2cCmd) delay(10); //stops looping indefinitely until input a newline NL
           //need to set EPROM flag in eprom
@@ -1949,8 +1949,8 @@ void i2cReceive(int len){                      //function to handle i2c received
        if(i2cIncoming[0]=='@') {        // lower case '@' alternate cmd for EXIORDD
          dataPkt[0] = '`';              //new header (ver 300+) CS only sees  '`'
          for (int b=0;b<numDigBytes;b++)  dataPkt[b+1] =  SensorBlockStat[b];
-         dataPkt[1] = dataPkt[1] & 0xBF;  //clear S06 bit to aid CS bad packet identification
-   //     MyWire.write(dataPkt,(NUMdigPins+7)>>3);    //preload onRequest buffer      // ######  
+         dataPkt[1] = dataPkt[1] & 0xBF;  //clear S06 bit to aid CS bad packet identification  //######
+   //     MyWire.write(dataPkt,(NUMdigPins+7)>>3);    //preload onRequest buffer        
          EXCScmd0='@';       //save flag for i2cRequest()
          return;
        }  
@@ -1965,7 +1965,7 @@ void i2cReceive(int len){                      //function to handle i2c received
          uint16_t par3= i2cIncoming[5]+ i2cIncoming[6]*256;
          i2cIncoming[12]='\n';        //ensure ends with newline
           
-         if((i2cIncoming[0] == 'a')&&(par3 < 1000)) {   //assumes 4 par format
+         if((i2cIncoming[0] == 'a')&&(par3 < 999)) {   //assumes 4 par format
            par1=i2cIncoming[1]; // par1=(i2cIncoming[1]/10)*8+(i2cIncoming[1]%10 & 0x07);    //bsn back to bsNo
 												 
            for(j=1;j<12;j++) i2cIncoming[j]=' ';
@@ -2006,7 +2006,7 @@ void i2cReceive(int len){                      //function to handle i2c received
          dataPkt[0] = '~';              
          dataPkt[1] = byte(BCDver/100);
          dataPkt[2] = byte(BCDver%100);   
-   //      MyWire.write(dataPkt,3);     //preload onRequest buffer      // ######
+   //      MyWire.write(dataPkt,3);     //preload onRequest buffer      
          i2cCmd[0]='^';                 //alt. version cmd       
          i = 1; 
        }
@@ -2057,8 +2057,7 @@ void i2cRequest(){                             //function to handle i2c request 
  int i=0;
  int bsn=0;
 					
- 
-     if(EXCScmd0=='@'){ MyWire.write(dataPkt,11); EXCScmd0=0; return;}   //preloaded onRequest buffer   // ######
+     if(EXCScmd0=='@'){ MyWire.write(dataPkt,11); EXCScmd0=0; return;}   //preloaded onRequest buffer   
         
      if(EXCScmd==true) { i2cExpanderRequest(EXCScmd0, dataPkt); return; }    
      i=i2cCmd[1];               //get 1st parameter from LAST onReceive
@@ -2068,10 +2067,10 @@ void i2cRequest(){                             //function to handle i2c request 
      switch(i2cCmd[0]) {        //first character decides return data      
        case 'p':            //p$;  //write ascending sensor coordinates into packet
          i=i2cPrepare((char)i2cCmd[0],(char)i2cCmd[1],(char *)dataPkt);
-         /*numWritten=*/ MyWire.write(dataPkt,32);
+         MyWire.write(dataPkt,32);
          break;
        case 'b':            //b$:  //write descending blocks into packet (1 to 10 bytes)
-         /*numWritten=*/ MyWire.write(dataPkt,32);//i);  //update onRequest buffer (write won't stop at first NUL char!)   
+         MyWire.write(dataPkt,32);//i);  //update onRequest buffer (write won't stop at first NUL char!)   
          break;
        case 'd':               //NOTE: master should request data 3 times to try to flush false values
          if(isDigit(i)) {      //loop() updates dMaxDiff & dBright only once every 100mSec
@@ -2089,7 +2088,7 @@ void i2cRequest(){                             //function to handle i2c request 
          MyWire.write(i);          //no of ASCII # bytes?
          for (i=(i-0x30);i>=0;i--) MyWire.write(SensorActiveBlk[i]);
          break;
-	   case 'n':           //n$,## //set nLed and minSensors			 
+       case 'n':           //n$,## //set nLed and minSensors			 
        case 'm':           //m$,## //set min2flip and maxSensors   
          MyWire.write(dataPkt,7);
          break;         
@@ -2116,17 +2115,17 @@ void i2cRequest(){                             //function to handle i2c request 
        //case EXIORDD:               //0xE6 -> 1+NUMdigPins/8 bytes + spare analog
        //as alternative to '@'/'`'
        case '@':
-         MyWire.write(dataPkt,10/*numDigBytes*/+1);  //preload onRequest buffer // ######
+         MyWire.write(dataPkt,10/*numDigBytes*/+1);  //preload onRequest buffer 
          break;	
        case '~':               //'^' from <N Ver> version request
        case '^':
-         MyWire.write(dataPkt,3);   //preload onRequest buffer      // ######  
+         MyWire.write(dataPkt,3);   //preload onRequest buffer        
          break;
      
        default:             //if invalid onReceive Cmd, onRequest returns dud i2cCmd as data packet
-         MyWire.write(CAMERR);       //return header byte as Error flag 0xFE(254.)    
-         MyWire.write(i2cCmd);     //send back (preload) old ASCII received data packet. 
-         Spr("onRequest dud command preloaded. ");Serial.println(i2cCmd[0],HEX);
+         MyWire.write(CAMERR);     //return header byte as Error flag 0xFE(254.)    
+         MyWire.write(i2cCmd);     //send back (preload) old ASCII received data packet.    //#######
+         Serial.print("onRequest dud command preloaded. ");Serial.println(i2cCmd[0],HEX);
      } 
 }   // ***************************** 
 
