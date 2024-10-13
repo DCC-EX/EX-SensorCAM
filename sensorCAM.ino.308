@@ -1,6 +1,6 @@
 //sensorCAM Alpha release                                                                                 limit >|
 #define BCDver 308
-    //v308 add tcounter for 't' argument of 2-30. Add linear STEPX_SF & STEPR_SF. Reverse v306 re 'a' pvtThreshold
+    //v308 add tcounter for 't' argument of 2-30. Linear STEPX_SF & STEPR_SF. Only 'a%%,r,x' clears pvtThreshold
     //v307 getting line sensors cmd '/' and '\' working optimally.  'v' for version, 'v1' or 'v2' for video
     //v306 pvtThreshold for S00 & linear banks. 'a' now clears pvtThreshold. Create linear '/' & '\' cmds. 
     //v305 more minor code neatening & array initialisation. Correct Linear stepR calculation
@@ -848,7 +848,7 @@ int bsn=0;
           int rowVal=int(get_number(&cmdString[3]));
           if(cmdString[3]!=',' || rowVal<0 || rowVal>235) printf("invalid rowValue\n");
           else { 
-            //pvtThreshold[bsn]=255;   //clear pvtThreshold   //new coordinates so cancel pvtThreshold? linear??
+            pvtThreshold[bsn]=255;   //new coordinates so cancel pvtThreshold. ('k' doesn't clear it)
             i=7;
             if(cmdString[5]==',') i=5;
             if(cmdString[6]==',') i=6;            
