@@ -39,7 +39,7 @@
  * #include "IO_EXSensorCAM.h" in IODevice.h
  * To create EX-SensorCAM devices, define them in myHal.cpp: with
  * EXSensorCAM::create(baseVpin,num_vpins,i2c_address)  or
-♠ * alternatively use HAL(baseVpin,numpins,i2c_address) in myAutomation.h
+ * alternatively use HAL(EXSensorCAM baseVpin numpins i2c_address) in myAutomation.h
  * also #define SENSORCAM_VPIN baseVpin in config.h
  *
  * void halSetup() {
