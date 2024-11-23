@@ -27,11 +27,13 @@ In addition, the Processing 4 application is highly desired to enable railroad i
 The webserver WiFi images are not a substitute for the Processing 4 utility, as sensorCAM cannot "sense" in webserver mode.
 Specific SensorCAM files are provided for each of the above apps.
 
+NOTE: For enhanced versions, rather than "main/master" branch, use a recent "devel" version of Command Station (5.2.88+) and "devel" branch of sensorCAM (3.10+)
+
 ## Documentation
 The sensorCAM is a complex device needing some in depth understanding to achieve its full potential.
 A 30 page manual is provided to assist with this process.
 
-If you want clarification or wish to discuss the implementation please contact me at bcdaniel2@optusnet.com.au and I will attempt to address your issues.  I welcome your feedback. 
+If you want clarification or wish to discuss the implementation please contact me on Discord (@Barryd) or at bcdaniel2@optusnet.com.au and I will attempt to address your issues.  I welcome your feedback. 
 
 ## Outline of install process
 1.	Acquire ESP32-CAM and MB/FTDI
