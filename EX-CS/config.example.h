@@ -84,7 +84,7 @@ The configuration file for DCC-EX Command Station
 // NOTE: Only supported on Arduino Mega
 // Set to false if you not even want it on the Arduino Mega
 //
-#define ENABLE_WIFI false //true
+#define ENABLE_WIFI true
 
 /////////////////////////////////////////////////////////////////////////////////////
 //
@@ -167,6 +167,14 @@ The configuration file for DCC-EX Command Station
 //  *  #define SCROLLMODE 2 is by row (move up 1 row at a time).
 #define SCROLLMODE 1
 
+// In order to avoid wasting memory the current scroll buffer is limited
+// to 8 lines.  Some users wishing to display additional information
+// such as TrackManager power states have requested additional rows aware
+// of the warning that this will take extra RAM.  if you wish to include additional rows
+// uncomment the following #define and set the number of lines you need.
+//#define MAX_CHARACTER_ROWS 12
+
+
 /////////////////////////////////////////////////////////////////////////////////////
 // DISABLE EEPROM
 //
@@ -192,6 +200,31 @@ The configuration file for DCC-EX Command Station
 // #define DISABLE_PROG
 
 /////////////////////////////////////////////////////////////////////////////////////
+// DISABLE / ENABLE VDPY
+//
+// The Virtual display "VDPY" feature is by default enabled everywhere
+// but on Uno and Nano. If you think you can fit it (for example
+// having disabled some of the features above) you can enable it with
+// ENABLE_VDPY. You can even disable it on all other CPUs with
+// DISABLE_VDPY
+//
+// #define DISABLE_VDPY
+// #define ENABLE_VDPY
+
+/////////////////////////////////////////////////////////////////////////////////////
+// DISABLE / ENABLE DIAG
+//
+// To diagose different errors, you can turn on differnet messages. This costs
+// program memory which we do not have enough on the Uno and Nano, so it is
+// by default DISABLED on those. If you think you can fit it (for example
+// having disabled some of the features above) you can enable it with
+// ENABLE_DIAG. You can even disable it on all other CPUs with
+// DISABLE_DIAG
+//
+// #define DISABLE_DIAG
+// #define ENABLE_DIAG
+
+/////////////////////////////////////////////////////////////////////////////////////
 // REDEFINE WHERE SHORT/LONG ADDR break is. According to NMRA the last short address
 // is 127 and the first long address is 128. There are manufacturers which have
 // another view. Lenz CS for example have considered addresses long from 100. If
@@ -201,6 +234,14 @@ The configuration file for DCC-EX Command Station
 //#define HIGHEST_SHORT_ADDR 0
 // We do not support to use the same address, for example 100(long) and 100(short)
 // at the same time, there must be a border.
+
+/////////////////////////////////////////////////////////////////////////////////////
+// Some newer 32bit microcontrollers boot very quickly, so powering on I2C and other
+// peripheral devices at the same time may result in the CommandStation booting too
+// quickly to detect them.
+// To work around this, uncomment the STARTUP_DELAY line below and set a value in
+// milliseconds that works for your environment, default is 3000 (3 seconds).
+// #define STARTUP_DELAY 3000
 
 /////////////////////////////////////////////////////////////////////////////////////
 //
@@ -266,6 +307,22 @@ The configuration file for DCC-EX Command Station
 //
 //#define SERIAL_BT_COMMANDS
 
+// BOOSTER PIN INPUT ON ESP32 CS
+// On ESP32 you have the possibility to define a pin as booster input
+//
+// Arduino pin D2 is GPIO 26 is Booster Input on ESPDuino32
+//#define BOOSTER_INPUT 26
+//
+// GPIO 32 is Booster Input on EX-CSB1
+//#define BOOSTER_INPUT 32
+
+// ESP32 LED Wifi Indicator
+// GPIO 2 on ESPduino32
+//#define WIFI_LED 2
+//
+// GPIO 33 on EX-CSB1
+//#define WIFI_LED 33
+
 // SABERTOOTH
 //
 // This is a very special option and only useful if you happen to have a
@@ -280,11 +337,16 @@ The configuration file for DCC-EX Command Station
 /////////////////////////////////////////////////////////////////////////////////////
 //
 // SENSORCAM
-// ESP32-CAM based video sensors default vpins starting with 700
-// requires redefine to use another base vpin number.
-#define SENSORCAM_VPIN0 700
+// ESP32-CAM based video sensors require #define to use appropriate base vpin number.
+#define SENSORCAM_VPIN 700
 // For shortcut to vPin number, define CAM for ex-rail use e.g. AT(CAM 012) for S12 etc.
-#define CAM SENSORCAM_VPIN0+
+#define CAM SENSORCAM_VPIN+
+
+//#define SENSORCAM2_VPIN 600   //define other CAM's if installed.
+//#define CAM2 SENSORCAM2_VPIN+ //for EX-RAIL commands e.g. IFLT(CAM2 020,1)
+//
+// For smoother power-up, define a STARTUP_DELAY to allow CAM to initialise ref images
+#define STARTUP_DELAY 5000  // up to 20sec. CS delay
 
 
 /////////////////////////////////////////////////////////////////////////////////////
