@@ -61,8 +61,6 @@ The configuration file for ESP32-CAM based sensorCAM
 #define TWOIMAGE_MAXBS 030
 //                                                                                
 // Set the I2C device address 
-// If using a DCCEX CS master, this address must be below the ESP32CAP set in the Command Station "driver EXSensorCAM.h"
-// the default CAP is 0x12
 //#define I2C_DEV_ADDR 0x11  // default
 #define I2C_DEV_ADDR 0x11	 
 // 

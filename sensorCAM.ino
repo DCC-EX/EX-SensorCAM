@@ -1,6 +1,8 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 313
-/*  //v313 corrected a line bug (dx) and suppressed some debug output
+#define BCDver 314
+/*
+    //v314 fix 'v1' command bug introduced v310
+    //v313 corrected a line bug (dx) and suppressed some debug output
     //v312 introduce int8_t deltaX[80] to allow finer line angles. dx -64 to 63.  Saves to EPROM. Remved _SFs
     //v311 improved setup for line sensor '\%%'  Add linear markers to image 'Y' & correct f565to666() ptr
     //v310 added parser and modified processCmd() Remove some redundancies
@@ -34,7 +36,7 @@
 //#define SUPPLY   10     //see configCAM.h - set period to 10 half-cycles of mains (50Hz) (use 25 for 60Hz)
 #define CYCLETIME 100000  //100mSec cycle time syncs with 5cycles of 50Hz and 6 cycles at 60 Hz
 #ifndef BRIGHTSF
-#define BRIGHTSF 3		  //increases sensitivity.  If 1, 20% change adds 3*SF to diff. 5% is ignored
+#define BRIGHTSF 3      //increases sensitivity.  If 1, 20% change adds 3*SF to diff. 5% is ignored
 #endif
 #ifndef SEN_SIZE
 #define SEN_SIZE 0      //sensor expansion - add SEN_SIZE rows and columns + through 4x4 sensor. 
@@ -1222,8 +1224,9 @@ int bsn=0;
         wait(); 
         break;
       }
-      case 'v':{      //v#;  reboot & select video webserver mode                
-        if((p[1]<'1')||(p[1]>'2')) {printf("(v#) CAM software version (BCDver): %d\n",BCDver); wait(); break;}
+      case 'v':{      //v#;  reboot & select video webserver mode
+        printf("CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);                
+        if((p[1]<1)||(p[1]>2)) {printf("(v#) CAM software version (BCDver): %d\n",BCDver); wait(); break;}
         int wifi=p[1];     //identify requested wifi router (1 or 2)
         printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
         printf("Waiting - press 'Enter' to trigger reset\n");

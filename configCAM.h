@@ -51,20 +51,19 @@ The configuration file for ESP32-CAM based sensorCAM
 // For ALTERNATIVE WiFi network set up SSID and password if required
 //#define ALTWIFI_SSID     "Your Alt.net name"
 //#define ALTWIFI_PWD  "Your Alt.netPassword"
-#define ALTWIFI_SSID     "Optus_7CAD86"
-#define ALTWIFI_PWD  "stagsyentaHFPjX"
+#define ALTWIFI_SSID     "Optus_7CAD47"
+#define ALTWIFI_PWD  "stagsyemtaXPPjX"
 //
 // To invoke TWOIMAGE Averaging feature on more/less virtual Sensors, adjust this parameter
 // this average may reduce sensitivity to noise BUT may increase response time by 100mSec to minimal level changes 
 // use 2 image pixel level average for sensor to filter noise below this bsNo.
 //#define TWOIMAGE_MAXBS 030
-#define TWOIMAGE_MAXBS 030
-//                                                                                
+#define TWOIMAGE_MAXBS 030 
+//
 // Set the I2C device address 
-// If using a DCCEX CS master, this address must be below the ESP32CAP set in the Command Station "driver EXSensorCAM.h"
-// the default CAP is 0x12
 //#define I2C_DEV_ADDR 0x11  // default
 #define I2C_DEV_ADDR 0x11	 
+// 
 // 
 // As a mains frequency driven lighting system can introduce "flicker" at double the frequency (100/120Hz)
 // setting this parameter may reduce the resulting "noise" on sensors
@@ -78,10 +77,5 @@ The configuration file for ESP32-CAM based sensorCAM
 // however if long unbuffered USB cable is used a slower rate may be unavoudable.
 //#define BAUD 115200      // Limits full QVGA Serial image transfer time to 13seconds.      
 #define BAUD 115200          
-//
-// Set Sensor size at 0 for default 4x4 pixel size (16 usable pixels)
-// For larger footprint set to # (1-9) for size (4+#)x(4+#)
-//#define SEN_SIZE 0       //0 gives 4x4 pixels
-#define SEN_SIZE 2         //2 gives 6x6 pixel sensor size (16 usable corner pixels)
 //
 /////////////////////////////////////////////////////////////////////////////////////
