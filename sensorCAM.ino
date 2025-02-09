@@ -1,6 +1,7 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 314
+#define BCDver 315
 /*
+    //v315 fix to '&' parzing, make 'v 0' from CS equivalent to '^'
     //v314 fix 'v1' command bug introduced v310
     //v313 corrected a line bug (dx) and suppressed some debug output
     //v312 introduce int8_t deltaX[80] to allow finer line angles. dx -64 to 63.  Saves to EPROM. Remved _SFs
@@ -334,9 +335,9 @@ void setup() {
       threshold=int(EEPROM.read(EPthreshold));      //use 32-255 default: 42?
       if(threshold==255) threshold=45;
       min2flip=int(EEPROM.read(EPmin2flip));        //default: 2
-      if(min2flip==255) min2flip=2;                 //check for unprogrammed EPROM
-      maxSensors=int(EEPROM.read(EPmaxSensors));     //debug limit
-      printf("EEPROM set threshold = %d; nLED = %d; min2flip = %d; maxSensors =%d\n",\
+      if(min2flip>9 || min2flip==0) min2flip=2;     //check for unprogrammed EPROM
+      maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
+      printf("EEPROM set threshold = %d; nLED = %d; min2flip = %d; maxSensors =0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
     for (j=0;j<80;j++) SensorTwin[j]=0;     //initialise Twins, if none in eprom.
@@ -1225,7 +1226,7 @@ int bsn=0;
         break;
       }
       case 'v':{      //v#;  reboot & select video webserver mode
-        printf("CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);                
+        printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
         if((p[1]<1)||(p[1]>2)) {printf("(v#) CAM software version (BCDver): %d\n",BCDver); wait(); break;}
         int wifi=p[1];     //identify requested wifi router (1 or 2)
         printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
@@ -1358,7 +1359,7 @@ int bsn=0;
       case '&':{      //statistics
 		    int hsum=0;
         printf("(&) print Histogram of Hi noise trips since last '&'.  i.e. in %d loops.\nbsNo\t",HistoLoops);
-        for (bsn=0;bsn<maxSensors;bsn++) if(SensorActive[bsn]) printf("%o\t",bsn);
+        for (bsn=0;bsn<maxSensors;bsn++) if(SensorActive[bsn]) printf("%o\t",bsn); printf("SUM");
         for (i=1;i<5;i++) { 
           printf("\n%d Hi\t",i); 
           for(bsn=0;bsn<maxSensors;bsn++) 
@@ -1952,6 +1953,7 @@ void i2cReceive(int len){                      //function to handle i2c received
           
        //convert cap alpha to lower alpha and ascii string       
        if(i2cIncoming[0]<='^'){       // then capital cmd instead of EXIOWRAN (0xEA) encoded
+         if(i2cIncoming[0]=='V' && i2cIncoming[2]==0) i2cIncoming[0]='^'; //make 'V 0' equal '^'
          if(i2cIncoming[0]==']')i2cIncoming[0]='F';  //wants a (webcam) reset rather than 'f' frame
          else i2cIncoming[0]=i2cIncoming[0]+0x20;    //to lowercase (ver '^' -> '~' , data '\' -> '|' )
 
@@ -1997,7 +1999,7 @@ void i2cReceive(int len){                      //function to handle i2c received
 	   
       // need to prepare response buffer for selected commands 
       //   case EXIOVER:                  //EXIOVER(0xE3)
-       if(i2cIncoming[0]=='~') {        // lower case '^' gives '~'
+       if((i2cIncoming[0]=='~')||(i2cIncoming[0]=='v' && i2cIncoming[2]==0)) {    // lower case '^' gives '~'
          dataPkt[0] = '~';              
          dataPkt[1] = byte(BCDver/100);
          dataPkt[2] = byte(BCDver%100);   
@@ -2718,8 +2720,8 @@ int parz(char *cmdString, int16_t *param){
   //param:  array of numParam integer parameters 
   //return numParam parameters in param[]. return 0 if NO valid parameters in cmdString
   int numParam=0;
-    if(!((cmdString[0] =='+')||(cmdString[0]>'&')))           // these low-range cmds acceptable
-    if((cmdString[0] < '@')||(cmdString[0]>'~')) return 0;  // accept ascii 0x40 to 0x7E
+    if(!((cmdString[0] =='+')||(cmdString[0]=='&')||(cmdString[0]=='/')))           // these low-range cmds acceptable
+      if((cmdString[0] < '@')||(cmdString[0]>'~')) return 0;  // accept ascii 0x40 to 0x7E
     param[0]=cmdString[0];
     numParam=1; 
     for (int i=1;i<=5;i++) param[i] = -1;   //max 5 parameters
@@ -2737,7 +2739,7 @@ int parz(char *cmdString, int16_t *param){
           p=cmdString[i];    //special case for 'j'&'yy' - accept alpha.
         }
         if(p>=0) {           //have a new parameter
-           param[numParam]=p;
+          param[numParam]=p;
           numParam++;
           p=-1;    
         }
