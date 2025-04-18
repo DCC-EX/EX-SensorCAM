@@ -25,7 +25,7 @@ The configuration file for ESP32-CAM based sensorCAM
 **********************************************************************/
 
 /////////////////////////////////////////////////////////////////////////////////////
-// WIFI_SSID is the network name IF you want to use your existing home network.
+// WIFI_SSID is the network name. IF you want to use your existing home network.
 // Do NOT change this if you want to use the WiFi in Access Point (AP) mode. 
 //
 // If you do NOT set the WIFI_SSID and do NOT set the WIFI_PASSWORD,
@@ -52,18 +52,18 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define ALTWIFI_SSID     "Your Alt.net name"
 //#define ALTWIFI_PWD  "Your Alt.netPassword"
 #define ALTWIFI_SSID     "Optus_7CAD47"
-#define ALTWIFI_PWD  "stagsyemtaXPPjX"
+#define ALTWIFI_PWD  "awsQUtdfDe45VX"
 //
 // To invoke TWOIMAGE Averaging feature on more/less virtual Sensors, adjust this parameter
 // this average may reduce sensitivity to noise BUT may increase response time by 100mSec to minimal level changes 
 // use 2 image pixel level average for sensor to filter noise below this bsNo.
 //#define TWOIMAGE_MAXBS 030
 #define TWOIMAGE_MAXBS 030 
-//
-// Set the I2C device address 
-//#define I2C_DEV_ADDR 0x11  // default
-#define I2C_DEV_ADDR 0x11	 
 // 
+// Set the I2C device address 
+// Try to keep in range 0x11-0x14 (CAM/CAM1 to CAM4)
+//#define I2C_DEV_ADDR 0x11  // default
+#define I2C_DEV_ADDR 0x11 
 // 
 // As a mains frequency driven lighting system can introduce "flicker" at double the frequency (100/120Hz)
 // setting this parameter may reduce the resulting "noise" on sensors
@@ -78,4 +78,15 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define BAUD 115200      // Limits full QVGA Serial image transfer time to 13seconds.      
 #define BAUD 115200          
 //
+// Set Sensor size at 0 for default 4x4 pixel size (16 usable pixels)
+// For larger footprint set to # (1-9) for size (4+#)x(4+#)
+//#define SEN_SIZE 2       //2 gives 6x6 pixel sensor size (16 usable corner pixels)
+#define SEN_SIZE 0         //0 gives standard 4x4 pixels
+//
+// Setup for linear sensors
+//#define STEPR_SF 1         //scale linear row steps (default 8 gives max length 56(8*7) pixels / line segment)
+//#define STEPX_SF 1
+//
+// default is set for ESP32-CAM.  If using a (FREENOVE) ESP32-WROVER-CAM camera(with integral USB) then use..
+//#define CAMERA_MODEL_WROVER_KIT
 /////////////////////////////////////////////////////////////////////////////////////
