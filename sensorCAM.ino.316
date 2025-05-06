@@ -1,7 +1,7 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 316
-/*
-    //v316 added ESP32_WROVER_CAM option (integral USB)
+#define BCDver 316  //316b
+/* 
+    //v316 added ESP32_WROVER_CAM option (integral USB), made QLED configurable via NLED in config.h
     //v315 fix to '&' parzing, make 'v 0' from CS equivalent to '^'
     //v314 fix 'v1' command bug introduced v310
     //v313 corrected a line bug (dx) and suppressed some debug output
@@ -80,13 +80,13 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #define WEBPIN  14        // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
 #define GPIO0    0        // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
 #define FLASHLED 4        //GPIO4, when 4 HIGH turns on Flash LED.  Use ~25uSec pulse to indicate new fb image.
-#define BLK0LED  2        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
+#define BLK0LED 33        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
 #define BLK1LED 33        // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
 #define BLK2LED 33        //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
 #define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
-#define pLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the pLED
+#define PLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
+#define QLED    2         //configurable bank NLED output
                           //GPIO14 multipurposed - LED pulls GPI14 high. Need to Gnd GPIO14 to select web server.
-//#define GPIO16  16      //GPIO16 is used for PSRAM and CAN NOT be repurposed!
        //GPIO0 unavailable. Need to Gnd GPIO0 to program then needed for CAM CSI_MCLK
        //GPIO1 & GPIO3 reserved for TX/RX USB comms.
        //GPIO12 best left untouched. Used to set internal voltages for Embedded Flash? 
@@ -97,13 +97,13 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #define WEBPIN  14        // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
 #define GPIO0    0        // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
 #define FLASHLED 2        //GPIO2, when 2 HIGH turns on Red LED.  Use ~25mSec pulse to indicate new fb image.
-#define BLK0LED 32        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
+#define BLK0LED 33        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
 #define BLK1LED 33        // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
 #define BLK2LED 33        //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
 #define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
-#define pLED    14        //assign LED to be programmable. i.e. 'n#' cmd assigns bank # status to the pLED
+#define PLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
+#define QLED    32        //assign a LED to configurable bank NLED output
 #endif
-
 #include <EEPROM.h>
 #define EEPROM_SIZE 320+8+80+80+80 //long pointers to image +reboot flag(int)(+threshold,nLED,min2flip,maxSensors?)
 #define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (4byte)integer, others as byte
@@ -138,6 +138,11 @@ bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false};
 #define S666_row  12          //length of row for one sensor (_pitch= s666_row x 4(rows) (for QVGA resolution) 4x3
 #define AVCOUNT 32            //Nominate the number of frames to average for 'r' reference image
 #define NUM2AVERAGE 32        //variables for auto references averaging & updating for unoccupied enabled sensors
+            
+#ifndef NLED                  //define NLED in config.h to select a BLK for QLED indicator pin 
+#define NLED 0                //default 0 maintains consistency with earlier versions
+#endif
+
 
 /*  sensorCAM commands:
 a%%   Activate/enAble sensor[%%] refresh Sensor_ref[%%], cRatios etc. from S[%%] image (48 bytes) in latest frame.
@@ -208,7 +213,8 @@ int  HistoLoops=0;
 int  SensorHisto[80*5];
 //uint32_t i2cCtr = 0;        //prepare for i2c       
 //bool CmdI2C=false;
-int  nLED=2;                  //Blk No assigned to programmable LED - initially bank 2
+int  nLED=2;                  //Blk No assigned to programmable LED (PLED)- initially bank 2
+ 
 int  maxSensors=050;          //use to limit USB PRINTOUT time & line length 
 unsigned int  minSensors=000;           //a lower limit for sensor data output
     //used if using more sensors than can otherwise be processed in 100mSec.(42-> max bsNo=51 (5*8+1) ). It limits
@@ -347,13 +353,13 @@ void setup() {
     printf("Video flag read as %d; Webpin %d\n",i,(1-digitalRead(WEBPIN)));
     if(i==0){    //EPROM contains data so use stored parameters - restore threshold,nLED,min2flip,maxSensors
       nLED=int(EEPROM.read(EPnLED));
-      if (nLED==255) nLED=1;                        //GPIO2 LED assigned to block 0, second nLED on GPIO14 pLED
-      threshold=int(EEPROM.read(EPthreshold));      //use 32-255 default: 42?
+      if (nLED==255) nLED=1;                        //set a default if new EEPROM 
+      threshold=int(EEPROM.read(EPthreshold));      //use 32-254 default: 45?
       if(threshold==255) threshold=45;
       min2flip=int(EEPROM.read(EPmin2flip));        //default: 2
-      if(min2flip>9 || min2flip==0) min2flip=2;     //check for unprogrammed EPROM
+      if(min2flip>9 || min2flip==0) min2flip=2;     //checks for unprogrammed EPROM
       maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
-      printf("EEPROM set threshold = %d; nLED = %d; min2flip = %d; maxSensors =0%o\n",\
+      printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
     for (j=0;j<80;j++) SensorTwin[j]=0;     //initialise Twins, if none in eprom.
@@ -379,7 +385,8 @@ void setup() {
       pinMode(BLK1LED, OUTPUT);digitalWrite(BLK1LED,HIGH);  //set up bank occupied indicators (GPIO 2,14,4,33)
       pinMode(BLK2LED, OUTPUT);digitalWrite(BLK2LED,HIGH);
       pinMode(BLK3LED, OUTPUT);digitalWrite(BLK3LED,HIGH);  //consider logic reversal for all ext. LEDS
-      pinMode(pLED, OUTPUT);digitalWrite(pLED,HIGH);     
+      pinMode(PLED, OUTPUT);digitalWrite(PLED,HIGH); 
+      pinMode(QLED, OUTPUT);digitalWrite(QLED,HIGH);          
 
     }else{ MyWebServer=true;                  //run CAM in webserver mode (no track Sensors)
         pinMode(FLASHLED,OUTPUT); 
@@ -780,6 +787,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
 // ****FLASH A LED ON EACH LOOP.  Use FLASHLED pin
     if (FLASHLED==4) flashLed(20);            //flash White led on IO4 briefly (~25uSec for ESP32-CAM)
     else { digitalWrite(FLASHLED, HIGH); delay(5); digitalWrite(FLASHLED, LOW); }  //wastes 5% of loop time!*****
+    setLED(nLED,true);    // set the PLED and QLED block status indicators also
  
 // ****CHECK FOR USB COMMAND INPUT -  PROCESS ANY COMMAND
 /***/ IF7 if (SensorBlockStat[h7block] != 0){Spr("debug-trip in Block:");Serial.println(h7block);wait();} 
@@ -1103,15 +1111,15 @@ int bsn=0;
           if(p[2]>=100) minSensors=bsN(p[2]%100);
           else if(bsN(p[2])>minSensors) maxSensors=bsN(p[2]);
         }
-        printf("(m$[,%%%%]) Min/Max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, "
-        "threshold %d, TWOIMAGE_MAXBS 0%o \n", min2flip, maxSensors, minSensors, nLED, threshold, TWOIMAGE_MAXBS);  
+        printf("(m$[,%%%%]) Min/Max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, NLED %d, "
+        "threshold %d, TWOIMAGE_MAXBS 0%o \n", min2flip, maxSensors, minSensors, nLED, NLED, threshold, TWOIMAGE_MAXBS);  
         wait();
         break;
       }
       case 'n':{      //n;  Number of block to assign to the programmable LED
-        if(nParam>1){   
+        if(nParam>1){   //caution: setting nLED to the number used as NLED overrides/disables QLED in favour of PLED
           if(p[1]<10) nLED = p[1];
-          digitalWrite(pLED,HIGH);          //initial setting (LED off) in case it never gets updated elsewhere.
+          digitalWrite(PLED,HIGH);          //initial setting (LED off) in case it never gets updated elsewhere.
         }
         if (nParam > 2){
           if(p[2]<100) minSensors=bsN(p[2]); 
@@ -1862,7 +1870,6 @@ bool processDiff(int bsn){
           }else{        //sustained LOW, so set UN-OCCUPIED
             SensorStat[bsn]=false; SensorFilter[bsn] =1-min2flip;  //reset filter (-ve) to count UP towards occupied if needed  (-1 requires 2 "occupieds")
             SensorBlockStat[b]= SensorBlockStat[b] & ~mask[bsn&7]; //clear SensorBlock bit
-            if(SensorBlockStat[b]==0) setLED(b,false);             //if whole block unoccupied, clear LED
             if(bsn<maxSensors){
               IFsc {if(bsn<8)Spr("0");Spr(bsn,OCT);Spr(":--");Spr(bpd);Spr("--* ");}
             }
@@ -1883,8 +1890,7 @@ bool processDiff(int bsn){
               SensorStat[bsn]=true;  SensorFilter[bsn] = min2flip;   //i.e. occupied, 
                 //set dropout filter (+ve) to discourage dropout registration (from noise) 
               SensorBlockStat[b]= SensorBlockStat[b] | mask[bsn&7];  //set block bit to 1.
-              setLED(b,true);                                     //turn occupied LED on
-              if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;    //flag as occupied for i2c
+              if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;     //flag as occupied for i2c
                 emptyStateCtr[bsn]=0;                             //clear "untripped" counter
                 IFsc{
                   if(bsn<8)Spr("0");
@@ -2557,24 +2563,16 @@ void averageRcalculation(int AVbsn,int Numbr){      //NOTE: function can only av
 
  //  FUNCTION TO SET BLOCK LED
 void setLED(int b, bool sLED){
-    if(b==nLED) b=10;       //if block assigned to programmable LED
-    if(sLED){               //if true, set LED on
-      switch(b) {
-            case 0: digitalWrite(BLK0LED,LOW); break;
-            case 1: digitalWrite(BLK1LED,LOW); break;      
-            case 2: digitalWrite(BLK2LED,LOW); break;
-            case 3: digitalWrite(BLK3LED,LOW); break; 
-            case 10: digitalWrite(pLED,LOW); break;          //set pLED ON
-      }
-    }else{ 
-      switch(b) { 
-            case 0: digitalWrite(BLK0LED,HIGH); break;    
-            case 1: digitalWrite(BLK1LED,HIGH); break;      
-            case 2: digitalWrite(BLK2LED,HIGH); break;
-            case 3: digitalWrite(BLK3LED,HIGH); break; 
-            case 10: digitalWrite(pLED,HIGH); break;         //set pLED  
-      }          
+  int16_t BLKLED[] = {BLK0LED,BLK1LED,BLK2LED,BLK3LED,0,0,0,0,0,0,PLED,QLED};
+  for (i=0; i<=9; i++) {
+    b=i;
+    if(i==NLED) b=11;       //nLED overrides qLED
+    if(i==nLED) b=10;       //if block assigned to programmable LED 
+    if(BLKLED[b] > 0) {
+      if(SensorBlockStat[i] != 0) digitalWrite(BLKLED[b],LOW);  //set LED ON 
+      else digitalWrite(BLKLED[b],HIGH);     //else set LEDS OFF
     }
+  }
 }  // *****************************
 
 // FUNCTION TO AVERAGE LAST 2 FRAMES before compare()
