@@ -25,7 +25,7 @@ The configuration file for ESP32-CAM based sensorCAM
 **********************************************************************/
 
 /////////////////////////////////////////////////////////////////////////////////////
-// WIFI_SSID is the network name IF you want to use your existing home network.
+// WIFI_SSID is the network name. IF you want to use your existing home network.
 // Do NOT change this if you want to use the WiFi in Access Point (AP) mode. 
 //
 // If you do NOT set the WIFI_SSID and do NOT set the WIFI_PASSWORD,
@@ -52,7 +52,7 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define ALTWIFI_SSID     "Your Alt.net name"
 //#define ALTWIFI_PWD  "Your Alt.netPassword"
 #define ALTWIFI_SSID     "Optus_7CAD47"
-#define ALTWIFI_PWD  "stagsyentaXPPjX"
+#define ALTWIFI_PWD  "adetrhe63XPPjX"
 //
 // To invoke TWOIMAGE Averaging feature on more/less virtual Sensors, adjust this parameter
 // this average may reduce sensitivity to noise BUT may increase response time by 100mSec to minimal level changes 
@@ -61,8 +61,9 @@ The configuration file for ESP32-CAM based sensorCAM
 #define TWOIMAGE_MAXBS 030
 //                                                                                
 // Set the I2C device address 
+// Try to keep in range 0x11-0x14 (CAM/CAM1 to CAM4)
 //#define I2C_DEV_ADDR 0x11  // default
-#define I2C_DEV_ADDR 0x11	 
+#define I2C_DEV_ADDR 0x11 
 // 
 // As a mains frequency driven lighting system can introduce "flicker" at double the frequency (100/120Hz)
 // setting this parameter may reduce the resulting "noise" on sensors
@@ -82,4 +83,14 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define SEN_SIZE 2       //2 gives 6x6 pixel sensor size (16 usable corner pixels)
 #define SEN_SIZE 0         //0 gives standard 4x4 pixels
 //
+// Setup for linear sensors
+//#define STEPR_SF 1       //scale linear row steps (default 8 gives max length 56(8*7) pixels / line segment)
+//#define STEPX_SF 1
+//
+// default is for ESP32-CAM (_AI_THINKER).  For a (FREENOVE) ESP32-WROVER-CAM camera(with integral USB) use..
+//#define CAMERA_MODEL_WROVER_KIT
+//
+// LED indicators may be attached to pins PLED and QLED.  Use (n#) cmd to select a block for PLED
+// if QLED is fitted it defaults to block 0.  It can be reasigned to another block (NLED) here e.g.
+//#define NLED 1
 /////////////////////////////////////////////////////////////////////////////////////
