@@ -1,5 +1,5 @@
 
-/* 2024/12/4  version 205
+/* 2025/5/4  version 206
  *
  * sensorCAM Serial Monitor 
  * by Barry Daniel
@@ -8,16 +8,15 @@
  * Sends a line out the serial port when Enter key pressed
  * listens for bytes received, and displays their value.
  * sensorCAM command enhancements for imaging capability
- * 1/4/2023
  */
 
 import processing.serial.*;
 
 int comNo=1;  //0 for first COM port, may force another port  e.g. 1 for second port.
+final int SF=2;        // image scale factor (2-4) 
 
-String VER = "SensorCAM RGB565 320 x 240   Monitor v205 for Processing4";
+String VER = "SensorCAM RGB565 320 x 240   Monitor v206 for Processing4";
 int BAUD=115200;
-
 Serial myPort;         // The serial port
 int whichKey = '\n';   // Variable to hold keystoke values
 int inByte = -1;       // Incoming serial data
@@ -34,7 +33,6 @@ PImage img2;
 PImage mouseCursor;
 
 boolean newS = false;
-
 int coordX=-1, coordY=-1;
 int WidithRequest=240; //number of rows-height.  240x320 frame max. 
 int xStartPt=0;        //image request start column default value
@@ -50,9 +48,11 @@ int timeoutMax = 120;          //mSec
 int timeout=timeoutMax;        //start timeout counter
 boolean verbose=false;					  
 
-
+void settings(){
+  size(330*SF,270*SF);
+}
 void setup() { 
-    size(660, 540);              //must be 1st line of setup()
+  //  size(990,810); //330*SF, 270*SF);   //must be 1st line of setup() and use literal numbers, no names!
     print("choosing comNo ");println(comNo);
   
 //  mouseCursor = loadImage("8pixSQ.png");  could try a special cursor 
@@ -61,7 +61,7 @@ void setup() {
     textFont(myFont,16);
     background(0);
     fill(204,102,0);
-    rect(10,30,640,480);
+    rect(10,30,320*SF,240*SF);
     fill(255,255,255);            //colour for headings
 
 //create a test background image  
@@ -87,7 +87,7 @@ void setup() {
     String portName = Serial.list()[comNo];
     print("using "); println(portName);
   
-    text("Cmd: ", 10, 530);
+    text("Cmd: ", 10, 264*SF);  //was 530
     text(VER, 10, 20);  
     myPort = new Serial(this, portName, BAUD,'N',8,1);
     myPort.setDTR(false);      //GPIO0 high 3.3V
@@ -104,11 +104,11 @@ void draw() {      // loops continuously
   }
   
   if ((inLine[0] == 'k') || (inLine[0] == 'a')){    //set cursor for sensor creation
-    if (i>=3 && mouseY <  500 && mouseY > 30 && mouseX >10) {
+    if (i>=3 && mouseY <  250*SF && mouseY > 30 && mouseX >10) {
       cursor(HAND); // cursor(mouseCursor,0,0);
       newS = true;
       if (coordX >= 0) {          //create command for new sensor
-        print ("make sensor Cmd: ");
+        print (" make sensor Cmd: ");
         i=3;                      //always add after "a%%"
         inLine[i]=','; i++;    
         String strng =str(coordY);         //row
@@ -123,10 +123,10 @@ void draw() {      // loops continuously
         coordX=-1;                  //don't let it repeat
       
         fill(200);                    //clear and rewrite command line
-        rect(45,512,605,25); 
+        rect(45,256*SF,303*SF,12*SF); //was 512,605,25
         fill(0);
-        for(int j=0;j<i;j++)  text(inLine[j],50+j*10,530);
-        text(char(1),50+i*10,530);    //try to add a claytons "cursor" 
+        for(int j=0;j<i;j++)  text(inLine[j],50+j*10,264*SF);
+        text(char(1),50+i*10,264*SF);    //try to add a claytons "cursor" 
         String aCmd= new String(inLine);
         print(aCmd);
       }
@@ -165,12 +165,12 @@ void draw() {      // loops continuously
        whichKey=0;      
        delay(100);
        fill(200);                    //clear and rewrite command line
-       rect(45,512,605,25);
+       rect(45,256*SF,303*SF,12*SF);    //was 512,605,25
        fill(0);
        for(int j=0;j<i;j++){  
-         text(inLine[j],50+j*10,530);
+         text(inLine[j],50+j*10,264*SF);
        } 
-       text(char(1),50+i*10,530);    //try to add a claytons "cursor"
+       text(char(1),50+i*10,264*SF);    //try to add a claytons "cursor"
     }
   }
 }
@@ -214,6 +214,12 @@ void keyPressed() {
         myPort.setDTR(false);  //'R' GPIO0 highTT
         myPort.setRTS(false);  //'T' EN low as well triggers reboot
         whichKey=0;            // hide 'R' key
+        break;
+      case 0x16:     // ^V for toggle verbose/quiet mode
+        verbose=!verbose;
+        if(verbose) print("verbose mode ");
+        else print("quiet mode ");
+        break;
     }
 }
 
@@ -270,7 +276,7 @@ boolean myCommand(char cmd,int nch) { //execute primary (capital) commands
   }    
 }     //end myCommand()   
      
-boolean executeYcmd() {     //detailed 'Y' command execution
+boolean executeYcmd() { println(" executeYcmd verb=%d",verbose);     //detailed 'Y' command execution
      //fetch an image strip at Yrow (WidithRequest rows wide, starting at xStartPt column, ending after Zlength pixels)
      int dataZlength=0;     //line length
      timeout=120;           //set big timeout for first 'y'
@@ -310,12 +316,12 @@ boolean executeYcmd() {     //detailed 'Y' command execution
              inPtr=int(inPtr+1)&inPtrMsk;   //advance inPtr to new cell
              inBuf[inPtr] = char(myPort.read());     //read char into ring buffer.
              if (chInBuf(inPtr)==':'){       //end character of header perhaps
- /***/         if(verbose)println("found a :"); 
+/***/         if(verbose)println("found a :"); 
                if (isMyHeader(inPtr,row_i)) {   //good header (haven't checked xStartPt or Zlength)  //if is good header - process                         
                  int xStartPt = int(chInBuf(inPtr-5)) *2 ;          //uses header x val
                  dataZlength = int(chInBuf(inPtr-3)) *2 ;     //uses header z val
                  int ckSum = int(chInBuf(inPtr-1))*256 + int( chInBuf(j-2));               //read expected chSum
- /***/           if(verbose){print("GOOD header Received. dataZlength is "); println(dataZlength);}
+/***/            if(verbose){print("GOOD header Received. dataZlength is "); println(dataZlength);}
                  if(verbose){for(int bf=inPtr-8;bf<(inPtr+18);bf++) print(chInBuf(bf));println("");}
                     //try and copy data to img2
                  int rx = xStartPt+320*row_i;                  //img2 pointer
@@ -359,7 +365,7 @@ boolean executeYcmd() {     //detailed 'Y' command execution
      }  //now go back and do for next row
      if(verbose) print("end of W rows - "); 
      scale(mirrorX,mirrorY);
-     image(img2, 10*mirrorX, 30*mirrorY,640*mirrorX,480*mirrorY);    //draw whole image to display window (Can't see it anyway before end of draw() loop)
+     image(img2, 10*mirrorX, 30*mirrorY,320*SF*mirrorX,240*SF*mirrorY);    //draw whole image to display window (Can't see it anyway before end of draw() loop)
 
      //end of for(;row_i<Ymax;)
      myPort.write("yy\n");     //send "yy" to resume normal CAM frame sampling
@@ -424,8 +430,8 @@ int waitForCh(){
 }
 void mousePressed(){
       if (newS){
-        coordX=(mouseX-10)/2;
-        coordY=(mouseY-30)/2; 
+        coordX=(mouseX-10)/SF;
+        coordY=(mouseY-30)/SF;
       } 
 }
          

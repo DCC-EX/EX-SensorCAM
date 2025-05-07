@@ -89,4 +89,8 @@ The configuration file for ESP32-CAM based sensorCAM
 //
 // default is for ESP32-CAM(_AI_THINKER).  For a (FREENOVE) ESP32-WROVER-CAM camera(with integral USB) use..
 //#define CAMERA_MODEL_WROVER_KIT
+//
+// if block leds fitted to pins PLED and QLED, 'n#' cmd can select block for PLED (default 1)
+// the block for QLED can be selected here (default 0) 
+//#define NLED 2
 /////////////////////////////////////////////////////////////////////////////////////
