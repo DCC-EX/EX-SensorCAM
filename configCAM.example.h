@@ -84,13 +84,13 @@ The configuration file for ESP32-CAM based sensorCAM
 #define SEN_SIZE 0         //0 gives standard 4x4 pixels
 //
 // Setup for linear sensors
-//#define STEPR_SF 1       //scale linear row steps (default 8 gives max length 56(8*7) pixels / line segment)
+//#define STEPR_SF 1         //scale linear row steps (default 8 gives max length 56(8*7) pixels / line segment)
 //#define STEPX_SF 1
 //
-// default is for ESP32-CAM (_AI_THINKER).  For a (FREENOVE) ESP32-WROVER-CAM camera(with integral USB) use..
+// default is for ESP32-CAM(_AI_THINKER).  For a (FREENOVE) ESP32-WROVER-CAM camera(with integral USB) use..
 //#define CAMERA_MODEL_WROVER_KIT
 //
-// LED indicators may be attached to pins PLED and QLED.  Use (n#) cmd to select a block for PLED
-// if QLED is fitted it defaults to block 0.  It can be reasigned to another block (NLED) here e.g.
-//#define NLED 1
+// if block leds fitted to pins PLED and QLED, 'n#' cmd can select block for PLED (default 1)
+// the block for QLED can be selected here (default 0) 
+//#define NLED 2
 /////////////////////////////////////////////////////////////////////////////////////
