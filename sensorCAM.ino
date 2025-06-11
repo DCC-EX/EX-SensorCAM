@@ -1,6 +1,9 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 315
-/*
+#define BCDver 318   
+/*  //318  now also Accepts CS style sensorCAM cmds (<N  >), and more spaces in commands, from CAM USB monitor
+    //v317c set minSensors to skip scroll status & (working) sensors below minSensors, unless set to default 0
+    //v317 block LED handling re. latched & shared sensors ; convert EPvFlag to byte; enhanced EPminSensors
+    //v316 added ESP32_WROVER_CAM option (integral USB); made QLED configurable via NLED in config.h; fix <NM>
     //v315 fix to '&' parzing, make 'v 0' from CS equivalent to '^'
     //v314 fix 'v1' command bug introduced v310
     //v313 corrected a line bug (dx) and suppressed some debug output
@@ -16,15 +19,6 @@
     //v302 add '+' alignment, & experiments with wire.write() strategies 
     //v301 adjust i2c 'p' & 'q' cmd. added Prof's startup delay(2000)
     //v300 working mods to deal with new IO_EXSensorCAM.h driver(v300)
-    //v217 mods to 'n' and 'ver' for DCC-EX-CS  suppress "Waiting" if newi2cCmd. '@' or '`'
-    //v216 includes 'j' cmd. Compatible with IO_EXSensorCAM.h driver v316 with CamParser
-    //v208 tweak to get 'X' recognised in new format
-    //v206 changed return packet for EXIOVER to put 'v' in byte[0]
-    //v205
-    //v204 modified 'n' and 'm' to handle [n|m] [#]#[,##]
-    //v203 added pvtThreshold to i2c 'i' packet. Add minSensors to 'n$,##
-    //v201 Added 'd%' cmd. Linear sensor experiments. Clear S06 bit in EXIORDD packets for bad pkt identification
-    //v200 revised EXIORRDD response by adding header.  Is incompatible with CS pre v2.0 ES_IOEXSensorCAM driver
 */    
 #if __has_include ( "configCAM.h")
   #include "configCAM.h"
@@ -66,40 +60,56 @@
 TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = ) 
 
      // define appropriate board (only AI_THINKER tested so far
-#define CAMERA_MODEL_AI_THINKER   // Select camera model  (deault: has OV2640 Camera module)
+#ifndef CAMERA_MODEL_WROVER_KIT   // define in configCAM.h if appropriate 
+#define CAMERA_MODEL_AI_THINKER   // Select camera model for ESP32-CAM (deault: has OV2640 Camera module)
+#endif
 #include "camera_pins.h"          //for thinker, includes #define XCLK_GPIO_NUM 0
 
 #define I2C_FREQ 100000   //Master sets i2c clock frequency   MEGA uses default clock (100kBits/sec)
-                        //Define GPIO ports for I/O use        
+                        //Define GPIO ports for I/O use 
+#ifdef  CAMERA_MODEL_AI_THINKER                             
 #define I2C_SDA2 15       //for MyWire (twowire) i2c data GPIO pin 15
 #define I2C_SCL2 13       //for MyWire (twowire) i2c clock pin
 #define WEBPIN  14        // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
 #define GPIO0    0        // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
 #define FLASHLED 4        //GPIO4, when 4 HIGH turns on Flash LED.  Use ~25uSec pulse to indicate new fb image.
-#define BLK0LED  2        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
+#define BLK0LED 33        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
 #define BLK1LED 33        // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
 #define BLK2LED 33        //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
 #define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
-#define pLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the pLED
+#define PLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
+#define QLED    2         //configurable bank NLED output
                           //GPIO14 multipurposed - LED pulls GPI14 high. Need to Gnd GPIO14 to select web server.
-//#define GPIO16  16      //GPIO16 is used for PSRAM and CAN NOT be repurposed!
        //GPIO0 unavailable. Need to Gnd GPIO0 to program then needed for CAM CSI_MCLK
        //GPIO1 & GPIO3 reserved for TX/RX USB comms.
        //GPIO12 best left untouched. Used to set internal voltages for Embedded Flash? 
        //    (tried to use, but rendered FLASH RAM unprogrammable!(stuffed one CAM)
-
+#else  //set options for ESP32_WROVER_KIT
+#define I2C_SDA2 15       //for MyWire (twowire) i2c data GPIO pin 15
+#define I2C_SCL2 13       //for MyWire (twowire) i2c clock pin
+#define WEBPIN  14        // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
+#define GPIO0    0        // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
+#define FLASHLED 2        //GPIO2, when 2 HIGH turns on Red LED.  Use ~25mSec pulse to indicate new fb image.
+#define BLK0LED 33        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
+#define BLK1LED 33        // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
+#define BLK2LED 33        //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
+#define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
+#define PLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
+#define QLED    32        //assign a LED to configurable bank NLED output
+#endif
 #include <EEPROM.h>
 #define EEPROM_SIZE 320+8+80+80+80 //long pointers to image +reboot flag(int)(+threshold,nLED,min2flip,maxSensors?)
-#define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (4byte)integer, others as byte
-//#define EPminSensors EEPROM??    //also stepr/x_SF??
-#define EPnLED     EEPROM_SIZE-80-80-80-4   //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
-#define EPthreshold EEPROM_SIZE-80-80-80-3
+#define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (1byte)integer, others as byte
+//#define   also stepr/x_SF??
+#define EPminSensors EEPROM_SIZE-80-80-80-5 //beware of 0xFF
+#define EPnLED       EEPROM_SIZE-80-80-80-4 //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
+#define EPthreshold  EEPROM_SIZE-80-80-80-3
 #define EPmin2flip   EEPROM_SIZE-80-80-80-2
-#define EPmaxSensors  EEPROM_SIZE-80-80-80-1 //use to limit printout of sensor states (if > 40, loop time may suffer)
-#define EPSensorTwin   EEPROM_SIZE-80-80-80  //save SensorTwin array
-#define EPpvtThreshold  EEPROM_SIZE-80-80    //Individual thresholds (use default threshold if =255) also lineardr
-#define EPlineardX       EEPROM_SIZE-80      //save xsize for linear sensors
-                                      //maxSensors may also be used to avoid other wasted processing time.
+#define EPmaxSensors EEPROM_SIZE-80-80-80-1 //use to limit printout of sensor states (if > 40, loop time may suffer)
+#define EPSensorTwin EEPROM_SIZE-80-80-80  //save SensorTwin array
+#define EPpvtThreshold  EEPROM_SIZE-80-80 //Individual thresholds (use default threshold if =255) also lineardr
+#define EPlineardX      EEPROM_SIZE-80   //save xsize for linear sensors
+                                        //maxSensors may also be used to avoid other wasted processing time.
 // WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
 
 #define RGB565p  2                // bytes per pixel in RGB565 image
@@ -122,6 +132,11 @@ bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false};
 #define S666_row  12          //length of row for one sensor (_pitch= s666_row x 4(rows) (for QVGA resolution) 4x3
 #define AVCOUNT 32            //Nominate the number of frames to average for 'r' reference image
 #define NUM2AVERAGE 32        //variables for auto references averaging & updating for unoccupied enabled sensors
+            
+#ifndef NLED                  //define NLED in config.h to select a BLK for QLED indicator pin 
+#define NLED 0                //default 0 maintains consistency with earlier versions
+#endif
+
 
 /*  sensorCAM commands:
 a%%   Activate/enAble sensor[%%] refresh Sensor_ref[%%], cRatios etc. from S[%%] image (48 bytes) in latest frame.
@@ -140,8 +155,8 @@ i%%  *Individual sensor %% Information. Optional i%%,$$ sets Twin sensor[$$] for
 j$#   adJust camera setting $ to value # and display most settings (as for ‘g’) ‘j’ does NOT get new refs. - use r  
 k%%,rrr,xxx    *Set coordinates of Sensor[%%] to row: rrr &  xVal: xxx. Follow with r%%. Verify values with p$ cmd 
 l%%   (Lima) force sensor %% to ON (1= occupied (LED lit) & also set SensorActive[%%] false to inactivate updating
-m$[,##] *Min. no.($) of sequential frames to trigger Occupied threshold for detection (def.=2)[## sets maxSensors]    
-n$[,##] *Number of bank($) assigned to the programmable nLED to show bank$ occupancy status.  [## sets minSensors]
+m$[,%%] *Min. no.($) of sequential frames to trigger Occupied threshold for detection (def.=2)[%% sets maxSensors]    
+n$[,%%] *Number of bank($) assigned to the programmable nLED to show bank$ occupancy status.  [%% sets minSensors]
 o%%   (Oscar)force sensor %% off (0=UN-occupied (LED off) & also set SensorActive[%%] false to inactivate updating
 p$   *Position Pointer table for banks 0 to $ giving DEFINED sensor r/x positions.  p%% shorter.  <32 data bytes>
 q$   *Query bank $, to show which sensors enabled (in bits 7-0). 1=enabled. q9 gives ALL    <Req. $+2 data bytes>
@@ -192,7 +207,8 @@ int  HistoLoops=0;
 int  SensorHisto[80*5];
 //uint32_t i2cCtr = 0;        //prepare for i2c       
 //bool CmdI2C=false;
-int  nLED=2;                  //Blk No assigned to programmable LED - initially bank 2
+int  nLED=2;                  //Blk No assigned to programmable LED (PLED)- initially bank 2
+ 
 int  maxSensors=050;          //use to limit USB PRINTOUT time & line length 
 unsigned int  minSensors=000;           //a lower limit for sensor data output
     //used if using more sensors than can otherwise be processed in 100mSec.(42-> max bsNo=51 (5*8+1) ). It limits
@@ -326,18 +342,20 @@ void setup() {
 
     EEPROM.begin(EEPROM_SIZE);  //will need to load 80 (long)Sensor[] pointers from EPROM
     delay(500);                 //just copying an EPROM example (why?)
-    i=EEPROM.readInt(EPvFlag);   //if 1-2 initiate web server via wifi 
+    i=int(EEPROM.read(EPvFlag));   //if 1-2 initiate web server via wifi 
     if(i==2){ssid=ssid2; password=password2;}
     printf("Video flag read as %d; Webpin %d\n",i,(1-digitalRead(WEBPIN)));
     if(i==0){    //EPROM contains data so use stored parameters - restore threshold,nLED,min2flip,maxSensors
       nLED=int(EEPROM.read(EPnLED));
-      if (nLED==255) nLED=1;                        //GPIO2 LED assigned to block 0, second nLED on GPIO14 pLED
-      threshold=int(EEPROM.read(EPthreshold));      //use 32-255 default: 42?
+      if (nLED>9) nLED=2;                        //set a default if new EEPROM
+      minSensors=int(EEPROM.read(EPminSensors));      //use S00-S97(79) default: 0
+      if(minSensors>79) minSensors=0;      
+      threshold=int(EEPROM.read(EPthreshold));      //use 32-254 default: 45?
       if(threshold==255) threshold=45;
       min2flip=int(EEPROM.read(EPmin2flip));        //default: 2
-      if(min2flip>9 || min2flip==0) min2flip=2;     //check for unprogrammed EPROM
+      if(min2flip>9 || min2flip==0) min2flip=2;     //checks for unprogrammed EPROM
       maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
-      printf("EEPROM set threshold = %d; nLED = %d; min2flip = %d; maxSensors =0%o\n",\
+      printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
     for (j=0;j<80;j++) SensorTwin[j]=0;     //initialise Twins, if none in eprom.
@@ -357,20 +375,21 @@ void setup() {
         config.jpeg_quality = 12;           //4 better quality BUT slows any conversion to BMP by ~10%
         config.fb_count = 1;                //investigate speed gain using 327kB fast dynamic RAM. for a 154k fb  
       }
-      pinMode(4,OUTPUT);digitalWrite(4,LOW);  //turn off flash LED
-      pinMode(FLASHLED,OUTPUT);                             //to stop cycle flash set FLASHLED to another pin (33?)
+      pinMode(FLASHLED,OUTPUT);digitalWrite(FLASHLED,LOW);  //turn off flash LED
+      //pinMode(FLASHLED,OUTPUT);                           //to stop cycle flash set FLASHLED to another pin (33?)
       pinMode(BLK0LED, OUTPUT);digitalWrite(BLK0LED,HIGH);  //normal LED HIGH=off BUT (GPIO12 inverted. AVOID 12!)
       pinMode(BLK1LED, OUTPUT);digitalWrite(BLK1LED,HIGH);  //set up bank occupied indicators (GPIO 2,14,4,33)
       pinMode(BLK2LED, OUTPUT);digitalWrite(BLK2LED,HIGH);
-      pinMode(BLK3LED, OUTPUT);digitalWrite(BLK3LED,HIGH);
-      pinMode(pLED, OUTPUT);digitalWrite(pLED,HIGH);     
+      pinMode(BLK3LED, OUTPUT);digitalWrite(BLK3LED,HIGH);  //consider logic reversal for all ext. LEDS
+      pinMode(PLED, OUTPUT);digitalWrite(PLED,HIGH); 
+      pinMode(QLED, OUTPUT);digitalWrite(QLED,HIGH);          
 
     }else{ MyWebServer=true;                  //run CAM in webserver mode (no track Sensors)
         pinMode(FLASHLED,OUTPUT); 
         flashLed(25);         //pulse flash to show webserver mode initiation
         
          //clear EEPROM Web flag and proceed to webserver
-        EEPROM.writeInt(EPvFlag,0);  //clear flag at end of EEPROM
+        EEPROM.write(EPvFlag,0);  //clear flag at end of EEPROM
         EEPROM.commit();
         EEPROM.end();   //burn eeprom   
     
@@ -675,8 +694,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
 // ****DELAY TO REDUCE FRAMES PER SECOND FROM one/80mS to one/100mSec FOR PSRAM 25% IDLE (DE-STRESS) TIME. 
       while ((micros()-starttime)>CYCLETIME) {starttime += CYCLETIME;} //bring it back into sync if loop is late
       while ((micros()-starttime)<CYCLETIME) {;}  //kill any remaining spare time before 50/60Hz sync.
-      starttime += CYCLETIME;
-      
+      starttime += CYCLETIME;      
     // above should sync with mains just before releasing fb to be refilled.
     // this is based on the premise that the mains frequency is very accurate, stable & doesn't drift noticeably! 
     // also assumes ov2640 is restrained to run at 10Hz (This may not be true - suspect free runs at ~13Hz!) 
@@ -733,11 +751,11 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
           refBrightness=Sen_Brightness_Ref[0];   //a refBrightness from last time ALL references updated (startup, 'r00' or 'c' only)             
           refActual=quad[4];   //save refActual in case use later
 /***/     IFT { Spr(refBrightness);Spr(" refBrightness > actual ");Serial.println(refActual);}  //sensor[00]
-          else IFsc{ Spr(" T");Spr(threshold);Spr(" N");Spr(nLED);Spr(" R");
+          else IFsc if(minSensors==0){ Spr(" T");Spr(threshold);Spr(" N");Spr(nLED);Spr(" R");
             Spr(refBrightness);Spr(" A");Spr(refActual);
             Spr(" M");Spr(min2flip);Spr(" B");Spr(brightSF);Spr("\t");   //short & no \n
           }
-          bsn=minSensors;
+   //       bsn=minSensors;     //then skips active/enabled sensors up to minSensors!
         }   //end if(bsn==0)
       }     //end for(bsn=0->80) 
       i2cData[1]=byte(threshold);  //replace first i2c byte (bsn=0?) with threshold (don't want NULL bsn at start!
@@ -763,8 +781,9 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
     }       //end (normal loop comparisons) (prefillRef==0)
    
 // ****FLASH A LED ON EACH LOOP.  Use FLASHLED pin
-    if (FLASHLED==4) flashLed(20);            //flash White led on IO4 briefly (~uSec)
-    else { digitalWrite(FLASHLED, LOW); delay(10); digitalWrite(FLASHLED, HIGH); }     //delelays loop time!
+    if (FLASHLED==4) flashLed(20);            //flash White led on IO4 briefly (~25uSec for ESP32-CAM)
+    else { digitalWrite(FLASHLED, HIGH); delay(5); digitalWrite(FLASHLED, LOW); }  //wastes 5% of loop time!*****
+    setLED(nLED,true);    // set the PLED and QLED block status indicators also
  
 // ****CHECK FOR USB COMMAND INPUT -  PROCESS ANY COMMAND
 /***/ IF7 if (SensorBlockStat[h7block] != 0){Spr("debug-trip in Block:");Serial.println(h7block);wait();} 
@@ -938,13 +957,14 @@ int bsn=0;
         break;        //leaves flag for loop() to complete print output.       
       } 
       case 'e':{     //e;  EPROM burn any changes to Sensor[] & some other parameters
-        printf("(e)EPROM: Save latest threshold (%d), min2flip (%d), nLED (%d), maxSensors (%d), Sensor[] SensorTwin[] & pvtThreshold to EPROM\n"\
-               ,threshold,min2flip,nLED,maxSensors);
+        printf("(e)EPROM: Save latest threshold(%d), min2flip(%d), nLED(%d), minSensors(0%o), maxSensors(0%o), Sensor[] SensorTwin[] & pvtThreshold[] to EPROM\n"\
+               ,threshold,min2flip,nLED,minSensors,maxSensors);
+        EEPROM.write(EPminSensors,byte(minSensors));
         EEPROM.write(EPnLED,byte(nLED));
         EEPROM.write(EPthreshold,byte(threshold));
         EEPROM.write(EPmin2flip,byte(min2flip));
         EEPROM.write(EPmaxSensors,byte(maxSensors));
-        printf("EPROM: Save latest sensor pointers to EPROM with thresholds, nLED, min2flip & maxSensors\n");
+        printf("EPROM: Saving latest sensor pointers to EPROM with thresholds, nLED, min2flip, min & maxSensors\n");
         for (i=0;i<80;i++) {            //put changed values for SensorTwin[] & Sensor[] in EEPROM
           EEPROM.writeLong(i*4,Sensor[i]);            
           EEPROM.write(EPSensorTwin+i,SensorTwin[i]);
@@ -1082,24 +1102,24 @@ int bsn=0;
       case 'm':{      //m$;    Minimum: sequential frames to trigger Occupied status (default 2)
                       //m$,%%; Optional set maxSensors to ## (decimal)
         if(nParam>1){   
-          min2flip = p[1];       //only allow 1-9        
+          if(p[1]>0 && p[1]<9) min2flip = p[1];       //only allow 1-8        
         }
         if (nParam > 2){  
-          if(p[2]>=100) minSensors=bsN(p[2]%100);
+          if(p[2]>=100) minSensors=bsN(p[2]%100);   //fudge to let (m$,1%%) set minSensors - but can also use n$,%%
           else if(bsN(p[2])>minSensors) maxSensors=bsN(p[2]);
         }
-        printf("(m$[,%%%%]) Min/Max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, "
-        "threshold %d, TWOIMAGE_MAXBS 0%o \n", min2flip, maxSensors, minSensors, nLED, threshold, TWOIMAGE_MAXBS);  
+        printf("(m$[,%%%%]) Min/Max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, NLED %d, "
+        "threshold %d, TWOIMAGE_MAXBS 0%o \n", min2flip, maxSensors, minSensors, nLED, NLED, threshold, TWOIMAGE_MAXBS);  
         wait();
         break;
       }
       case 'n':{      //n;  Number of block to assign to the programmable LED
-        if(nParam>1){   
+        if(nParam>1){   //caution: setting nLED to the number used as NLED overrides/disables QLED in favour of PLED
           if(p[1]<10) nLED = p[1];
-          digitalWrite(pLED,HIGH);          //initial setting (LED off) in case it never gets updated elsewhere.
+          digitalWrite(PLED,HIGH);          //initial setting (LED off) in case it never gets updated elsewhere.
         }
         if (nParam > 2){
-          if(p[2]<100) minSensors=bsN(p[2]); 
+          if((p[2]%100)<maxSensors) minSensors=bsN(p[2]%100); 
         }  
         printf("(n$[,%%%%]) bank Number:%d assigned to programmable status LED (minSensors=0%o)\n",nLED,minSensors); 
         wait();             
@@ -1226,6 +1246,7 @@ int bsn=0;
         break;
       }
       case 'v':{      //v#;  reboot & select video webserver mode
+        if(FLASHLED==2)printf("CAMERA_MODEL_WROVER_KIT  ");
         printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
         if((p[1]<1)||(p[1]>2)) {printf("(v#) CAM software version (BCDver): %d\n",BCDver); wait(); break;}
         int wifi=p[1];     //identify requested wifi router (1 or 2)
@@ -1234,7 +1255,7 @@ int bsn=0;
         while (!Serial.available() && !newi2cCmd) delay(10); //stops looping indefinitely until input a newline NL
           //need to set EPROM flag in eprom
           // should we do another EEPROM.begin in case EEPROM.end already done??
-        EEPROM.writeInt(EPvFlag,wifi);   //write a flag to force webserver after reboot. (default wifi=1)
+        EEPROM.write(EPvFlag,wifi);   //write a flag to force webserver after reboot. (default wifi=1)
         EEPROM.write(EPnLED,byte(nLED)); //saves n, t, m parameters also. WARNING will loose other unsaved updates
         EEPROM.write(EPthreshold,byte(threshold));
         EEPROM.write(EPmin2flip,byte(min2flip));
@@ -1709,7 +1730,7 @@ int bsn;
 }      // *****************************
   
 // GET DECIMAL NUMBER FROM cmdString[].  Max 99999
-long get_number(char *cmdString){
+long get_number(char *){
         //cmdString looks like "c####xx\n" - only 1-5 #'s used
      int number=0;   
      for (int i=1;i<6;i++){           //accept up to 99999
@@ -1832,10 +1853,10 @@ bool processDiff(int bsn){
             if(SenHiCnt>4) SenHiCnt=4;       // cap at 4
             SensorHisto[bsn*5+SenHiCnt]+=1;  // increment histogram
             SensorHiCount[bsn]=0;            // clear Hi counter
-          }         
-          if(SensorFilter[bsn]>0){ SensorFilter[bsn]-=1;     //only clear block bit after 2nd or 3rd "unoccupied"
+          }        
+           if(SensorFilter[bsn]>0){ SensorFilter[bsn]-=1;     //only clear block bit after 2nd or 3rd "unoccupied"
             if(bsn<maxSensors){ i2cData[i2cDatai-2] |= 0x80; //flag as uncertain for i2c
-              IFsc {
+              IFsc if(bsn>=minSensors) {
                 if(bsn<8)Spr("0");
                 Spr(bsn,OCT);{if(bpd>99)Spr(":?"); else Spr(":?_");}
                 Spr(bpd);             
@@ -1843,19 +1864,18 @@ bool processDiff(int bsn){
                 else Spr("_?* ");
               }
             }
-          }else{        //sustained LOW, so set UN-OCCUPIED
+           }else{        //sustained LOW, so set UN-OCCUPIED
             SensorStat[bsn]=false; SensorFilter[bsn] =1-min2flip;  //reset filter (-ve) to count UP towards occupied if needed  (-1 requires 2 "occupieds")
             SensorBlockStat[b]= SensorBlockStat[b] & ~mask[bsn&7]; //clear SensorBlock bit
-            if(SensorBlockStat[b]==0) setLED(b,false);             //if whole block unoccupied, clear LED
             if(bsn<maxSensors){
-              IFsc {if(bsn<8)Spr("0");Spr(bsn,OCT);Spr(":--");Spr(bpd);Spr("--* ");}
+              IFsc if(bsn>=minSensors) {if(bsn<8)Spr("0");Spr(bsn,OCT);Spr(":--");Spr(bpd);Spr("--* ");}
             }
           }
         }else{          //high diff thinks OCCUPIED
           SensorHiCount[bsn]+=1;           // increment Hi counter for histogram 
           if(SensorFilter[bsn]<0){ SensorFilter[bsn]+=1;       //only clear block bit after 2nd or 3rd "occupied"
             if(bsn<maxSensors){i2cData[i2cDatai-2] |= 0x80;    //flag as undecided for i2c
-              IFsc{ 
+              IFsc if(bsn>=minSensors){ 
                 if(bsn<8)Spr("0");
                 Spr(bsn,OCT);{if(bpd>99)Spr(":?"); else Spr(":?_");}
                 Spr(bpd);Spr("_?* ");
@@ -1867,10 +1887,9 @@ bool processDiff(int bsn){
               SensorStat[bsn]=true;  SensorFilter[bsn] = min2flip;   //i.e. occupied, 
                 //set dropout filter (+ve) to discourage dropout registration (from noise) 
               SensorBlockStat[b]= SensorBlockStat[b] | mask[bsn&7];  //set block bit to 1.
-              setLED(b,true);                                     //turn occupied LED on
-              if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;    //flag as occupied for i2c
+              if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;     //flag as occupied for i2c
                 emptyStateCtr[bsn]=0;                             //clear "untripped" counter
-                IFsc{
+                IFsc if(bsn>=minSensors){
                   if(bsn<8)Spr("0");
                   Spr(bsn,OCT);{if(bpd>99)Spr(":o"); else Spr(":oo");}
                   Spr(bpd);Spr(OCc);Spr(OCc);if(OCc!=char(12))Spr('*'); Spr(' ');
@@ -1878,7 +1897,7 @@ bool processDiff(int bsn){
               }
             }else{      //twin disagrees            
               if(bsn<maxSensors){
-                IFsc{
+                IFsc if(bsn>=minSensors){
                   if(bsn<8)Spr("0");
                   Spr(bsn,OCT);{if(bpd>99)Spr(":o"); else Spr(":oo");}
                   Spr(bpd);Spr("?T* ");
@@ -2541,24 +2560,16 @@ void averageRcalculation(int AVbsn,int Numbr){      //NOTE: function can only av
 
  //  FUNCTION TO SET BLOCK LED
 void setLED(int b, bool sLED){
-    if(b==nLED) b=10;       //if block assigned to programmable LED
-    if(sLED){               //if true, set LED on
-      switch(b) {
-            case 0: digitalWrite(BLK0LED,LOW); break;
-            case 1: digitalWrite(BLK1LED,LOW); break;      
-            case 2: digitalWrite(BLK2LED,LOW); break;
-            case 3: digitalWrite(BLK3LED,LOW); break; 
-            case 10: digitalWrite(pLED,LOW); break;          //set pLED ON
-      }
-    }else{ 
-      switch(b) { 
-            case 0: digitalWrite(BLK0LED,HIGH); break;    
-            case 1: digitalWrite(BLK1LED,HIGH); break;      
-            case 2: digitalWrite(BLK2LED,HIGH); break;
-            case 3: digitalWrite(BLK3LED,HIGH); break; 
-            case 10: digitalWrite(pLED,HIGH); break;         //set pLED  
-      }          
-    }
+  int16_t BLKLED[] = {BLK0LED,BLK1LED,BLK2LED,BLK3LED,0,0,0,0,0,0,PLED,QLED};
+  for (int i=0; i<=11; i++) if(BLKLED[i]!=0) digitalWrite(BLKLED[i],HIGH); //clear led
+  for (int i=0; i<=9; i++) {
+    b=i;
+    if(i==NLED) b=11;       //nLED overrides qLED
+    if(i==nLED) b=10;       //if block assigned to programmable LED 
+    if(BLKLED[b] > 0) {
+      if(SensorBlockStat[i] != 0) digitalWrite(BLKLED[b],LOW);  //set LED ON 
+    }  //note: if multiple blocks on same led, LED used to reflect last block ONLY!
+  }
 }  // *****************************
 
 // FUNCTION TO AVERAGE LAST 2 FRAMES before compare()
@@ -2716,23 +2727,29 @@ bool makeLinear( int bsn, int deltaR, int deltaX,bool newS, int sign ) {  //retu
 
 //FUNCTION TO PARSE ASCII COMMAND STRING
 int parz(char *cmdString, int16_t *param){
-  //cmdString: command ASCII character array with ',' or ' ' separators and ending with \n
+  //cmdString: cmd ASCII character array with ',' or ' ' separators & ending with \n
   //param:  array of numParam integer parameters 
   //return numParam parameters in param[]. return 0 if NO valid parameters in cmdString
-  int numParam=0;
-    if(!((cmdString[0] =='+')||(cmdString[0]=='&')||(cmdString[0]=='/')))           // these low-range cmds acceptable
-      if((cmdString[0] < '@')||(cmdString[0]>'~')) return 0;  // accept ascii 0x40 to 0x7E
-    param[0]=cmdString[0];
+  int numParam=0; int j=0;
+    if((cmdString[0]=='<') && (cmdString[1]=='N')) {   //accepts CS format '<N ' cmds. 
+      cmdString[0]=' '; cmdString[1]=' ';              //  ( except <NR> and <NF> ) 
+      for (j=0;j<6;j++) if(cmdString[j] != ' ') break; // find command position. Max 6 spaces 
+      cmdString[j] = tolower(cmdString[j]);
+    }
+    for (j=0;j<6;j++) if(cmdString[j] != ' ') break;   // find command position. Max 6 spaces 
+    if(!((cmdString[j] =='+')||(cmdString[j]=='&')||(cmdString[j]=='/')))   //accept +&/@~
+      if((cmdString[j] < '@')||(cmdString[j]>'~')) return 0; // accept ascii 0x40 to 0x7E
+    param[0]=cmdString[j];
     numParam=1; 
     for (int i=1;i<=5;i++) param[i] = -1;   //max 5 parameters
     int p = -1;
-    for (int i=1;i<12;i++){           //max 12 characters \%%,##,##,#\n  Multiple spaces problematic?
+    for (int i=j+1;i<20;i++){  //max 20 characters \%%,##,##,#\n  Limited spaces
       if ( isDigit(cmdString[i]) ) {  //does not handle '-'
         if(p < 0) p=0;
         p=p*10 + (int(cmdString[i]) - '0');
       }
       else {     //non-digit
-        if(cmdString[i]== '\n') break;                     //end of command array
+        if((cmdString[i]== '\n') || (cmdString[i]=='>')) break;     //end of command array
         if(!((cmdString[i]== ',')||(cmdString[i]== ' '))){ //not separator
           if((param[0]!='j')&&(param[0]!='y')) return 0;   //others must be numeric            
           if((cmdString[i] < '-')||(cmdString[i]>'z')) return 0;  //limit range
@@ -2755,8 +2772,7 @@ int parz(char *cmdString, int16_t *param){
       param[2]=param[1]%10;
       param[1]=param[1]/10;
       numParam=3;
-    }
-/***/ //    printf(("parz %d parameters; p[0] %c %d %d %d %d \n"),numParam, byte(param[0]),param[1],param[2],param[3],param[4]);  
+    } 
     return numParam;
 }   // ***************************** 
 

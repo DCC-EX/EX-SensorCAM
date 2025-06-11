@@ -1,0 +1,18 @@
+// myAutomation 
+
+//#include "myRoster.h"
+//#include "myAliases.h"
+//#include "myPoints.h"
+
+//HAL(MCP23017, 196, 16, 0X22)     //create other IO devices
+
+HAL(EXSensorCAM, SENSORCAM_VPIN,  80, 0x11) //SENSORCAM _VPIN defined in config.h
+// HAL(EXSensorCAM, SENSORCAM2_VPIN, 80, 0x12) //SENSORCAM2 _VPIN (CAM2) defined in config.h
+// HAL(EXSensorCAM, SENSORCAM3_VPIN, 80, 0x13) //ditto a third sensorCAM
+
+
+
+AUTOSTART
+POWERON
+DONE
+
