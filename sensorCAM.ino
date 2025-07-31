@@ -1,6 +1,8 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 318   
-/*  //318  now also Accepts CS style sensorCAM cmds (<N  >), and more spaces in commands, from CAM USB monitor
+#define BCDver 320 //test
+/*  //v320  add check byte[31] to i2c myWire.write
+    //v319  bulk removal pvtThresholds (t1,%%).  Limit minSensors < maxSensors. <Nt ##> sends selected sensors.    
+    //v318  now also Accepts CS style sensorCAM cmds (<N  >), and more spaces in commands, from CAM USB monitor
     //v317c set minSensors to skip scroll status & (working) sensors below minSensors, unless set to default 0
     //v317 block LED handling re. latched & shared sensors ; convert EPvFlag to byte; enhanced EPminSensors
     //v316 added ESP32_WROVER_CAM option (integral USB); made QLED configurable via NLED in config.h; fix <NM>
@@ -1118,15 +1120,15 @@ int bsn=0;
           if(p[1]<10) nLED = p[1];
           digitalWrite(PLED,HIGH);          //initial setting (LED off) in case it never gets updated elsewhere.
         }
-        if (nParam > 2){
-          if((p[2]%100)<maxSensors) minSensors=bsN(p[2]%100); 
+        if (nParam > 2){ int minS=bsN(p[2]);
+          if(minS < maxSensors) minSensors = minS; 
         }  
         printf("(n$[,%%%%]) bank Number:%d assigned to programmable status LED (minSensors=0%o)\n",nLED,minSensors); 
         wait();             
         break;  
       }
       case 'p':{      //p#;  Print table of Sensor[] Position Pointers (banks 0 to # only)
-        i=0; c=0; 
+        i=0; c=0; if(p[1]>9) p[1]=p[1]/10;
         if((p[1]<10) && (p[1]>=0)) b=p[1]; else b=3;  //default value       
         printf("(p$) Position Pointers: TL corners for DEFINED Sensors to bank %d\n",b);
         for (i=i;i<=b;i++) {
@@ -1138,9 +1140,9 @@ int bsn=0;
         wait();
         break;
       }
-      case 'q':{      //q$;  Query: block $ sensors. Show which are enabled - byte of 8 sensors (7-0) to USB & i2c 
+      case 'q':{    //q$;  Query: block $ sensors. Show which are enabled - byte of 8 sensors (7-0) to USB & i2c 
+        j=0; if(p[1]>9) p[1]=p[1]/10;
         if((p[1]<=9) && (p[1]>=0)) b=p[1]; else b=1;  //default value 1       
-        j=0;
         if(b==9) j=9;      //if "q9" send all blocks in reverse order (i.e. 9 first) else just do requested block       
         Spr("(q$) Query: bank ");Spr(b);Spr(" sensors (7-0) in enabled state: ");
         for (j=j;j>=0;j--){
@@ -1191,21 +1193,41 @@ int bsn=0;
       }     
       case 't':{      //t_:  Set threshold 31 to 250 for sensor "trip", send value to USB (& i2c)
         if(nParam==1) {printf("(t##[,%%%%]) Threshold: trip point set to %d \n", threshold); break;}
-        int param1 = p[1];
-        if(param1==00 && nParam==3) param1=99;   //t00,%% and t99,%% clears pvtThreshold[%%]
+        int param1 = p[1];    
+        if(param1==00 && nParam==3) param1=98;   //t00,%% and t99,%% clears pvtThreshold[%%] 
+        if(p[1] == 99){ printf("(t99) list all pvtThresholds");
+          for(int i=0;i<=9;i++){ printf("\n Bank %d: ",i); 
+            for(int j=0;j<=7;j++) if(pvtThreshold[i*8+j]<128) printf("S%d%d:%d ",i,j,pvtThreshold[i*8+j]);
+          } printf(" \n"); 
+          break;
+        }                        
         if(param1 > 30) {                 //OK threshold
           bsn=00;
           if(nParam==3){ bsn=bsN(p[2]);  
             if(bsn >= 00) pvtThreshold[bsn]=byte(param1);   
-            if(param1 == 99) {pvtThreshold[bsn]=255; param1=00;}      // clear pvtThreshold
+            if(param1 == 98) {pvtThreshold[bsn]=255; param1=00;}      // clear pvtThreshold
             printf("(t##,%%%%) setting pvtThreshold to %d for sensor S%o \n",param1,bsn);
           }                    
           else threshold=param1;  // will be permanent only use 'e' command (along with sensor changes and nLED)
         }
         else {      //p[1] 1-30
           if(param1==1) {
+            if(nParam==2){     //suppress scrolling data
               scroll=!scroll;  //use to hide scrolling status data.
               if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
+            }
+            if(nParam==3){     // (t1,%%) used to clear banks of pvtThresholds                      
+              int firstS=00; int lastS=79;
+              if(p[2] < 99) {firstS=(p[2]/10)*8; lastS=firstS+7;}    //just 1 bank
+              if(p[2] == 98){ printf("(t1,98) list pvtThresholds");
+                for(int i=0;i<=9;i++){ printf("\n Bank %d: ",i); 
+                  for(int j=0;j<=7;j++) if(pvtThreshold[i*8+j]<128) printf("S%d%d:%d ",i,j,pvtThreshold[i*8+j]);
+                } printf(" \n");
+              }              
+              else{ printf("(t1,%d) Clearing bank of pvtThresholds\n",p[2]);
+                for(int i=firstS;i<=lastS;i++) if(pvtThreshold[i]<128)pvtThreshold[i]=255;       // clear pvtThreshold
+              }
+            }
           }else {tcounter=param1+2;scroll=true; break;}     //start limited scroll looping
         }
         if(tcounter<2) printf("(t##) Threshold: trip point set to %d \n", threshold);
@@ -1835,10 +1857,10 @@ bool processDiff(int bsn){
         else bright=Sen_Brightness_Ref[bsn]*16/bright-16;  //produces a ratio of 0 up. (20% diff. gives bright=3)
         int b=bsn>>3; 
         int bpd=brightSF*bright+maxDiff;            //bpd = Brightness Plus colour Diff 
-        if (bsn<maxSensors) {                   //save bsn & bpd in i2c message
+        if (bsn<maxSensors && bsn>=minSensors) {    //save bsn & bpd in i2c message
           i2cData[i2cDatai]=byte(bsn);
           if(bpd<128)i2cData[i2cDatai+1]=byte(bpd); else i2cData[i2cDatai+1]=127;     //cap bpd value at 127 to fit in i2c byte.
-          if (i2cDatai<56)i2cDatai += 2;        //increment provided within buffer limit(58) (may corrupt last bsn)   
+          if (i2cDatai<27)i2cDatai += 2; //     if (i2cDatai<56)i2cDatai += 2;        //increment provided within buffer limit(58) (may corrupt last bsn)   
         }
         Threshold = pvtThreshold[bsn];          //if == 255 NO pvtThreshold
         if (Threshold==255) Threshold=threshold;//no pvtThreshold
@@ -1922,8 +1944,8 @@ void toAscii(byte * buff,int value, int n) {
 }    // ****************************
       
 //  FUNCTION TO ACCEPT I2C COMMANDS/DATA (AS SLAVE)
-void i2cReceive(int len){                      //function to handle i2c received (interrupt?)
- // uint8_t Nbytes=32; 
+void i2cReceive(int len){           //function to handle i2c received (interrupts)
+ // uint8_t SizeBuf=32;              //fn can receive in two formats - from CS (upper case or BCDstation(ascii lower case)
   int  numDigBytes = (NUMdigPins+7)>>3;   //preset to make function work!
   byte i2cIncoming[13];         //use to hold translated command. longest: k%%,123,234 12 char's + \n?
   int  i=0;
@@ -1947,7 +1969,6 @@ void i2cReceive(int len){                      //function to handle i2c received
        if(i2cIncoming[0]>=0xE0){           //then treat as EX-IOEXPANDER code and translate to sensorCAM command    
 /***/     IF8 if((E6counter>0)&&(i2cIncoming[0]!=0xE6)) Serial.write('E');     //don't output x for EXIORDD
           i = i2cExpanderReceive(i2cIncoming[0],(char *)i2cIncoming,(byte *)dataPkt);      //expander protocol
-/*             MyWire.write(dataPkt,Nbytes);   //preload onRequest buffer  */    // ###########
           i2cIncoming[i]='\n';             //ensure ends with newline
                                            //don't use normal 10Hz processing slot for priority cmds.
           
@@ -1960,21 +1981,20 @@ void i2cReceive(int len){                      //function to handle i2c received
           return;            
        }  //if header was >+0xE0 then never get past here
 
-          //   case EXIORDD:                   //EXIORDD(0xE6)read ALL digital bits (@100Hz)
+       dataPkt[31]=i2cIncoming[0] & 0xDF;  //put on packet end (upper case) // '@' = EXIORDD: //EXIORDD(0xE6)read ALL digital bits (@100Hz)
        if(i2cIncoming[0]=='@') {        // lower case '@' alternate cmd for EXIORDD
          dataPkt[0] = '`';              //new header (ver 300+) CS only sees  '`'
-         for (int b=0;b<numDigBytes;b++)  dataPkt[b+1] =  SensorBlockStat[b];
+         for (int b=0;b<numDigBytes;b++)  dataPkt[b+1] =  SensorBlockStat[b];  //0-9 blocks in [1] to [10}
          dataPkt[1] = dataPkt[1] & 0xBF;  //clear S06 bit to aid CS bad packet identification  //######
-   //     MyWire.write(dataPkt,(NUMdigPins+7)>>3);    //preload onRequest buffer         //##########    
          EXCScmd0='@';       //save flag for i2cRequest()
          return;
        }  
           
        //convert cap alpha to lower alpha and ascii string       
-       if(i2cIncoming[0]<='^'){       // then capital cmd instead of EXIOWRAN (0xEA) encoded
-         if(i2cIncoming[0]=='V' && i2cIncoming[2]==0) i2cIncoming[0]='^'; //make 'V 0' equal '^'
+       if(i2cIncoming[0]<='^'){       // then capital CS cmd instead of EXIOWRAN (0xEA) encoded
+      //   if(i2cIncoming[0]=='V' && i2cIncoming[2]==0) i2cIncoming[0]='^'; //make 'V 0' equal '^'
          if(i2cIncoming[0]==']')i2cIncoming[0]='F';  //wants a (webcam) reset rather than 'f' frame
-         else i2cIncoming[0]=i2cIncoming[0]+0x20;    //to lowercase (ver '^' -> '~' , data '\' -> '|' )
+         else i2cIncoming[0]=i2cIncoming[0] | 0x20;  //to lowercase (ver '^' to '~' , data '\' to '|' )
 
          uint16_t par1= i2cIncoming[2]+ i2cIncoming[3]*256;
          uint8_t  par2= i2cIncoming[4];
@@ -1998,71 +2018,78 @@ void i2cReceive(int len){                      //function to handle i2c received
             i=6;
            }else i=3;
          }
-         if((i2cIncoming[0]=='p') && (par1<10)) par1=par1*10;
-         if((i2cIncoming[0]=='q') && (par1<10)) par1=par1*10;
-         i2cIncoming[1]= par1/10+0x30;
+         if((i2cIncoming[0]=='p') || (i2cIncoming[0]=='q')) if (par1<10) par1=par1*10;   //want 00,10-97
+
+         i2cIncoming[1]= par1/10+0x30;            //to ascii b/s
          i2cIncoming[2]= par1%10+0x30; 
          
          if(i2cIncoming[0]=='j'){  
            toAscii(&i2cIncoming[1],par3,1);      
-           i2cIncoming[1]= par1;
+           i2cIncoming[1]= par1;                  //put alpha first
          }      
        }   // should now have an ascii command in i2cIncoming starting with lower case cmd 
        
-       if(!newi2cCmd) { 
-         newi2cCmd=true;     //skip new command if old one not yet finished.
+       if(!newi2cCmd) {  //skip new command if old one not yet finished. This could mean some CS comands need repeating!
          for (j=0;j<13;j++) i2cCmd[j]=i2cIncoming[j];  //assumes last command completely processed!
-       }                 //assume it is ASCII cmd.
+         i2cCmd[12]='\n';  newi2cCmd=true;          //ensure ends with newline  
+       }                 //assume it is valid ASCII cmd.
 
-       IFI2C {Spr("CS:");for(int k=0;k<13;k++)Spr(i2cCmd[k]);Spr('\n');}
+/**/   IFI2C {Spr("CS:");for(int k=0;k<13;k++)Spr(i2cCmd[k]);Spr('\n');}
 	   
       // need to prepare response buffer for selected commands 
-      //   case EXIOVER:                  //EXIOVER(0xE3)
-       if((i2cIncoming[0]=='~')||(i2cIncoming[0]=='v' && i2cIncoming[2]==0)) {    // lower case '^' gives '~'
-         dataPkt[0] = '~';              
+       if((i2cIncoming[0]=='~')||(i2cIncoming[0]=='v' /* && i2cIncoming[2]=='0'*/ )) {    // lower case '^' gives '~'
+         dataPkt[0] = i2cIncoming[0];   //  = '~';              
          dataPkt[1] = byte(BCDver/100);
-         dataPkt[2] = byte(BCDver%100);   
-   //      MyWire.write(dataPkt,3);     //preload onRequest buffer      
-         i2cCmd[0]='^';                 //alt. version cmd       
-         i = 1; 
+         dataPkt[2] = byte(BCDver%100);        
        }
-    
-       if(i2cIncoming[0]=='b') {
-         if (!isDigit(i2cIncoming[1])) i2cIncoming[1]=0x39; 
-         /*Nbytes=*/ i2cPrepare((char)i2cIncoming[0],(char)i2cIncoming[1],(char *)dataPkt);   //make an up-to-date dataPkt      
-         //MyWire.write(dataPkt,Nbytes);                                   //preload onRequest buffer
-       }
-       if(i2cIncoming[0]=='f') {
+
+       switch(i2cIncoming[0]) {
+        case 'b': 
+         if (!isDigit(i2cIncoming[1])) i2cIncoming[1]='9'; 
+         i2cPrepare((char)i2cIncoming[0],(char)i2cIncoming[1],(char *)dataPkt);   //make an up-to-date dataPkt      
+         break;
+       
+        case 'f': 
          if(isDigit(i2cIncoming[1])) {       //i2cIncoming[1] updates dMaxDiff & dBright only once every 100mSec
             bsn=i2cIncoming[1]-0x30;         //get bsNo
                //check for 2nd # // No error check if 8 or 9!
             if(isDigit(i2cIncoming[2])) bsn=bsn*8+((i2cIncoming[2]-0x30)&7);  //8=0 & 9=1 !
          }
-		     
-         /*Nbytes=*/ i2cPrepare((char)i2cIncoming[0],(char)(bsn+0x30),(char *)dataPkt);   //make an up-to-date dataPkt      
-         //MyWire.write(dataPkt,Nbytes);                                   //preload onRequest buffer 
+         i2cPrepare((char)i2cIncoming[0],(char)(bsn+0x30),(char *)dataPkt);   //make an up-to-date dataPkt   
          for(j=0;j<32;j++) {        //pull down next row
-           dataPkt[j]=dataPkt[j+32];dataPkt[j+32]=dataPkt[j+64];dataPkt[j+64]=dataPkt[j+96];    
+           dataPkt[j]=dataPkt[j+32];dataPkt[j+32]=dataPkt[j+64];dataPkt[j+64]=dataPkt[j+96];
          }
-       }
-       if((i2cIncoming[0]=='m')||(i2cIncoming[0]=='n')) {
+         dataPkt[31]='F';     
+         break;
+		 
+        case 'm':
+        case 'n': 
          bs=00;         
-         /*Nbytes=*/ i2cPrepare((char)i2cIncoming[0],(char)bs,(char *)dataPkt);   //make an up-to-date dataPkt 
-         //MyWire.write(dataPkt,Nbytes);   
-       }
-       if(i2cIncoming[0]=='i') {
+         i2cPrepare((char)i2cIncoming[0],(char)bs,(char *)dataPkt);   //make an up-to-date dataPkt 
+         break;
+   
+        case 'q': 
+         if (!isDigit(i2cIncoming[1])) i2cIncoming[1]='9'; 
+         i2cPrepare((char)i2cIncoming[0],(char)i2cIncoming[1],(char *)dataPkt);   //make an up-to-date dataPkt      
+         break;
+
+        case't': 
+         dataPkt[0]='t';   //if don't use i2cPrepare, don't get cmd.
+         for(i=1;i<31;i++) dataPkt[i]=i2cData[i]; //Serial.print(dataPkt[i]);}    //  [0] = [31] = 't','T' 
+         dataPkt[31]='T';   
+         break;
+       
+        case 'i': 
          if(isDigit(i2cIncoming[1])) {       //i2cIncoming[1] updates dMaxDiff & dBright only once every 100mSec
             bsn=i2cIncoming[1]-0x30;         //get bsNo and convert to integer
                //check for 2nd #  // No error check if 8 or 9!
             if(isDigit(i2cIncoming[2])) bsn=bsn*8+((i2cIncoming[2]-0x30)&7);  //8=0 & 9=1 !
          }
 	       bs=char(bsn+0x30);	      // "char" from 0x00 '0' to 0x4F 
-         /*Nbytes=*/ i2cPrepare((char)i2cIncoming[0],(char)bs,(char *)dataPkt);   //make an up-to-date dataPkt      
-         //MyWire.write(dataPkt,Nbytes);             
-	     } 
-            
-       i2cCmd[12]='\n';            //ensure ends with newline
-       newi2cCmd=true;            //set a flag for "loop()" to process cmd as if from USB
+         i2cPrepare((char)i2cIncoming[0],(char)bs,(char *)dataPkt);   //make an up-to-date dataPkt            
+	       break; 
+       }        
+
 /***/  IFT {Spr(len); Serial.println(" bytes onReceive");}     //debug to USB
        digitalWrite(FLASHLED,LOW);   //don't let it stay on too long
        return;
@@ -2073,13 +2100,14 @@ void i2cRequest(){                             //function to handle i2c request 
  int i=0;
  int bsn=0;
 					
-     if(EXCScmd0=='@'){ MyWire.write(dataPkt,11); EXCScmd0=0; return;}   //preloaded onRequest buffer   
-        
+     if(EXCScmd0=='@'){ //MyWire.write(dataPkt,11); EXCScmd0=0; return;}   //preloaded onRequest buffer   
+       MyWire.write(dataPkt,32); EXCScmd0=0; return;}
      if(EXCScmd==true) { i2cExpanderRequest(EXCScmd0, dataPkt); return; }    
      i=i2cCmd[1];               //get 1st parameter from LAST onReceive
-     if (strchr((const char *)F("aeFgjlorsuwx"),i2cCmd[0]) != nullptr) 
-       MyWire.write(EXIORDY);  //CS acknowledgement     
-     else 
+     if (strchr((const char *)F("aeFgjlorsuwx"),i2cCmd[0]) != nullptr) {
+       dataPkt[0] = EXIORDY; dataPkt[31]=EXIORDY; 
+       MyWire.write(dataPkt,32);  //   MyWire.write(EXIORDY);  //CS acknowledgement     
+     }else 
      switch(i2cCmd[0]) {        //first character decides return data      
        case 'p':            //p$;  //write ascending sensor coordinates into packet
          i=i2cPrepare((char)i2cCmd[0],(char)i2cCmd[1],(char *)dataPkt);
@@ -2098,22 +2126,16 @@ void i2cRequest(){                             //function to handle i2c request 
            MyWire.write(bsn);   
            MyWire.write(byte(dMaxDiff+dBright));MyWire.write(byte(dMaxDiff));MyWire.write(byte(dBright));
          }break;
-       case 'q':            //q$:  //write descending blocks into packet (1 to 10 bytes)
-         if(!isDigit(i)) i=0x39;   //default "q " to "q9"   
-         MyWire.write('q');        //write "header"
-         MyWire.write(i);          //no of ASCII # bytes?
-         for (i=(i-0x30);i>=0;i--) MyWire.write(SensorActiveBlk[i]);
-         break;
+       case 'q':           //q$:  //write descending blocks into packet (1 to 10 bytes)
        case 'n':           //n$,## //set nLed and minSensors			 
        case 'm':           //m$,## //set min2flip and maxSensors   
-         MyWire.write(dataPkt,7);
+         MyWire.write(dataPkt,32);  //  MyWire.write(dataPkt,7);
          break;         
        case 'i':            //i%%: //write state of sensor #/#    
-         MyWire.write(dataPkt,10);
+         MyWire.write(dataPkt,32);  // 10);
          break; 
        case 't':            //t$$$       //write old threshold value, & set new
-         i2cData[0]='t';
-         MyWire.write(i2cData);    //threshold should be in i2cData[0] and sensor[0] diff in i2cData[1]
+         MyWire.write(dataPkt,32); // MyWire.write(i2cData);    //threshold should be in i2cData[0] and sensor[0] diff in i2cData[1]
          break;
        case 'f':
          if(isDigit(i)) {      //i2cCmd[1] updates dMaxDiff & dBright only once every 100mSec
@@ -2121,8 +2143,8 @@ void i2cRequest(){                             //function to handle i2c request 
            i=i2cCmd[2];        //check for 2nd #   // No error check if 8 or 9!
            if(isDigit(i)) bsn=bsn*8+((i-0x30)&7);  //8=0 & 9=1 !
          }
-         dataPkt[0]='f';
-         MyWire.write(dataPkt,28);      //send first 27 bytes in 1 packet
+         dataPkt[0]='f'; dataPkt[31]='F';
+         MyWire.write(dataPkt,32);      //send first 27 bytes in 1 packet
          if(dataPkt[2]>=0x03){                     //have sent 4th row so get new sample
            i2cPrepare((char)i2cCmd[0],char(bsn+0x30),(char *)dataPkt);   //make new up-to-date dataPkt      
          }else for(i=0;i<32;i++) {                 //pull down next row
@@ -2131,16 +2153,18 @@ void i2cRequest(){                             //function to handle i2c request 
        //case EXIORDD:               //0xE6 -> 1+NUMdigPins/8 bytes + spare analog
        //as alternative to '@'/'`'
        case '@':
-         MyWire.write(dataPkt,10/*numDigBytes*/+1);  //preload onRequest buffer 
+         MyWire.write(dataPkt,32/*numDigBytes+1*/);  //preload onRequest buffer 
          break;	
        case '~':               //'^' from <N Ver> version request
        case '^':
-         MyWire.write(dataPkt,3);   //preload onRequest buffer        
+       case 'v':
+         MyWire.write(dataPkt,32);// MyWire.write(dataPkt,3);   //preload onRequest buffer        
          break;
      
        default:             //if invalid onReceive Cmd, onRequest returns dud i2cCmd as data packet
-         MyWire.write(CAMERR);     //return header byte as Error flag 0xFE(254.)    
-         MyWire.write(i2cCmd);     //send back (preload) old ASCII received data packet.    //#######
+         for(int i=0;i<=12;i++) dataPkt[i+1] = i2cCmd[i];
+         dataPkt[0]=CAMERR; dataPkt[31]=CAMERR;     //return header byte as Error flag 0xFE(254.)    
+         MyWire.write(dataPkt,32);     //send back (preload) old ASCII received data packet.    //#######
          Serial.print("onRequest dud command preloaded. ");Serial.println(i2cCmd[0],HEX);
      } 
 }   // ***************************** 
@@ -2445,6 +2469,13 @@ const int pitch=320*2;                  //row length in RGB565 buffer (QVGA 320x
           datapk[1]=i+2;                          //include byte count & parity
           datapk[i+1]=i2cparity ^ datapk[1];      //xor in byte count
           return datapk[1];                       //byte count
+        }
+        case 'q': {           //q$:  //write descending blocks into packet (1 to 10 bytes)
+          if(!isDigit(block)) block=0x39;   //default "q " to "q9"   
+ //        datapk[0]='q';     //MyWire.write('q');        //write "header"
+          datapk[1]= block;  //MyWire.write(i);          //no of ASCII # bytes?
+          datapk[2]= SensorActiveBlk[block-'0']; // for (i=(block-0x30);i>=0;i--)  //MyWire.write(SensorActiveBlk[i]);
+          return 3;
         }
         case 'f':{
           n=block-0x30;               //treat character 0x30 to 0x7F as bsn (0x30=0/0 0x7F=9/7)
@@ -2779,7 +2810,7 @@ int parz(char *cmdString, int16_t *param){
 //  FUNCTION TO EXTRACT BSN FROM DECIMAL PARZ INTERPRETATION
 int bsN(int dec){
    //dec: %% bsNo that was parsed as decimal.
-  if ((dec < 0)||(dec > 99)) return 00; //must return a valid bsn!
+  if ((dec < 0)||(dec > 99)) { Serial.println("bsN Range Error"); return 00;} //must return a valid bsn!
   int bsn = dec%10;           //extract "s" for bsNo
   if (bsn > 7) bsn=7;         //adjust if ends in '8' or '9'
   return ((dec/10)*8 + bsn);  //00-79.

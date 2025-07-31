@@ -19,14 +19,10 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//sensorCAM parser.cpp version 3.06  Jan 2025
+//sensorCAM parser.cpp version 3.07  July 2025
 #include "DCCEXParser.h"
 #include "CamParser.h"
 #include "FSH.h"
-
-const int16_t ver=30177;
-const int16_t ve =2899;
-
 
 // The CAMVPINS array will be filled by IO_EXSensorCam HAL drivers calling
 // the CamParser::addVpin() function.
@@ -72,14 +68,13 @@ bool CamParser::parseN(Print * stream, byte paramCount, int16_t p[]) {
       p[1]=p[1]%100;             //strip off CAM #
     } 
   }
-  if (CAMBaseVpin==0) {DIAG(F("<n Error: Invalid CAM selected, default to CAM1>"));
+  if (CAMBaseVpin==0) {DIAG(F("<n Error: Invalid CAM selected, default to CAM1 n>"));
     return false; // cam not defined
   }	
  
       // send UPPER case to sensorCAM to flag binary data from a DCCEX-CS parser  
   switch(paramCount) {    
-    case 1:                          //<N ver> produces '^'
-      if((camop == 'V') || (p[0] == ve) || (p[0] == ver) ) camop='^'; 
+    case 1:
       if (STRCHR_P((const char *)F("EFGMQRVW^"),camop) == nullptr) return false;
       if (camop=='Q') param3=10;     //<NQ> for activation state of all 10 banks of sensors
       if (camop=='F') camop=']';     //<NF> for Reset/Finish webCAM.
