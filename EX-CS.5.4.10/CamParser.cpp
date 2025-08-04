@@ -1,5 +1,5 @@
 
-//sensorCAM parser.cpp version 3.04  Nov 2024
+//sensorCAM parser.cpp Prod. version 3.05  Aug 2025
 #include "CamParser.h"
 #include "FSH.h"
 #include "IO_EXSensorCAM.h"
@@ -31,21 +31,29 @@ bool CamParser::parseN(Print * stream, byte paramCount, int16_t p[]) {
   uint8_t camop=p[0]; // cam oprerator 
   int param1=0;
   int16_t param3=9999;   // =0 could invoke parameter changes. & -1 gives later errors
+  int vpcount=3;       //Prod limited to 3 cams
 
   if(camop=='C'){ 
     if(p[1]>=100) EXSensorCAM::CAMBaseVpin=p[1];
-    if(p[1]<4) EXSensorCAM::CAMBaseVpin=CAMVPINS[p[1]];
+    if(p[1]<=vpcount) EXSensorCAM::CAMBaseVpin=CAMVPINS[p[1]];
     DIAG(F("CAM base Vpin: %c %d "),p[0],EXSensorCAM::CAMBaseVpin);
     return true;
   }
-  if (camop<100) {               //switch CAM# if p[1] dictates
-    if(p[1]>=100 && p[1]<400) {  //limits to CAM# 1 to 3 for now
-      vpin=CAMVPINS[p[1]/100];
-      EXSensorCAM::CAMBaseVpin=vpin;     
-      DIAG(F("switching to CAM %d baseVpin:%d"),p[1]/100,vpin); 
-      p[1]=p[1]%100;             //strip off CAM #
+
+  if ((camop<='a') && (camop>='A')){   //switch CAM# if p[1] or p[2] dictates (beware 'k')
+    vpin=p[1];
+    if(camop != 'A')   
+      if(p[2] < vpcount*100+99) { vpin=(p[1] > p[2]) ? p[1] : p[2] ;   //get the larger. 
+        p[2]=p[2]%100;       //strip off any CAM #
+      }
+    if((vpin>=100) && (int(vpin)<=vpcount*100+99)) {    //limits to CAM# 1 to vpcount
+      EXSensorCAM::CAMBaseVpin=CAMVPINS[vpin/100];     
+      DIAG(F("switching to CAM %d baseVpin:%d"),vpin/100,EXSensorCAM::CAMBaseVpin);     
+      p[1]=p[1]%100;       //strip off any CAM #
     } 
+    vpin=EXSensorCAM::CAMBaseVpin;
   }
+
   if (EXSensorCAM::CAMBaseVpin==0) return false; // no cam defined 
 
   
