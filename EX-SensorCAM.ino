@@ -832,6 +832,19 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
 }               //end of main loop
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// FUNCTION TO EXECUTE A REFRESH OF SENSORREF[00] r00 
+void DOr00() {
+      for (int i=0;i<80;i++){             
+        if (Sensor[i]>0)          //DEFINED so grab_ref(); Gets an image from Sensor666[] and computes new cRatios and brightness (*NO AVERAGING!*)
+           grab_ref(bsn,Sensor666,S666_pitch,long(i*S666_pitch),&Sensor_ref[i*S666_pitch],&Sen_Brightness_Ref[i],&SensorRefRatio[i*12]);  //includes new Cratios & brightness
+        averageRbsn=0;            //set a flag for main loop to compute a multi-second average Reference and update _ref[0-79]
+        averageRcounter=AVCOUNT;  //initiate down counter.  (10 per second)               
+      }     //end of r00
+      printf("Ref: r00 refreshes ALL defined sensor references with new Cratios & brightness\n");         
+      refBrightness=0;                      //recalculate a refBrightness from Sensor_ref - perhaps should ONLY do when r00 is executed not whenever ref(00) updated
+      for(int i=0;i<S666_pitch;i++) refBrightness+=int(Sensor_ref[i]);    //sum S666_pitch pixlets for 6x6 Sensor[0] max 6804r02        
+}   // ***************************** 
+
 //  PROCESS A COMMAND STRING FROM USER    
 void processCmd(byte *imagePtr,int pitch,unsigned long *Sensor,int nParam,int16_t *p){    //process parz command in p[]                                        
     //imagePtr: is a pointer to the location of image Data  NOTE no longer used by processCmd !
@@ -2657,19 +2670,6 @@ void boxIt(unsigned long Point,int BSno){           //Use sensor() pointer into 
     }
     return;
 }   // *****************************
-
-// FUNCTION TO EXECUTE A REFRESH OF SENSORREF[00] r00 
- void DOr00() {
-      for (int i=0;i<80;i++){             
-        if (Sensor[i]>0)          //DEFINED so grab_ref(); Gets an image from Sensor666[] and computes new cRatios and brightness (*NO AVERAGING!*)
-           grab_ref(bsn,Sensor666,S666_pitch,long(i*S666_pitch),&Sensor_ref[i*S666_pitch],&Sen_Brightness_Ref[i],&SensorRefRatio[i*12]);  //includes new Cratios & brightness
-        averageRbsn=0;            //set a flag for main loop to compute a multi-second average Reference and update _ref[0-79]
-        averageRcounter=AVCOUNT;  //initiate down counter.  (10 per second)               
-      }     //end of r00
-      printf("Ref: r00 refreshes ALL defined sensor references with new Cratios & brightness\n");         
-      refBrightness=0;                      //recalculate a refBrightness from Sensor_ref - perhaps should ONLY do when r00 is executed not whenever ref(00) updated
-      for(int i=0;i<S666_pitch;i++) refBrightness+=int(Sensor_ref[i]);    //sum S666_pitch pixlets for 6x6 Sensor[0] max 6804r02        
-}   // ***************************** 
 
 // FUNCTION TO COMPUTE NEW REF'S REGULARLY IF ACTIVE SENSORS NOT TRIPPED
 void refRefresh(bool suspend){ 
