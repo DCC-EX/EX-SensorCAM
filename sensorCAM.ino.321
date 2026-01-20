@@ -365,7 +365,8 @@ void setup() {
       min2flip=int(EEPROM.read(EPmin2flip));        //default: 2
       if(min2flip>9 || min2flip==0) min2flip=2;     //checks for unprogrammed EPROM
       maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
-      printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
+      if(maxSensors>80) maxSensors=80;
+	  printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
     for (j=0;j<80;j++) SensorTwin[j]=0;     //initialise Twins, if none in eprom.
@@ -1293,8 +1294,8 @@ int bsn=0;
         if(FLASHLED==2)printf("CAMERA_MODEL_WROVER_KIT  ");
         printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
         if((p[1]<1)||(p[1]>2)) {
-          printf("(v#) CAM software version (BCDver): %d\n",BCDver);
-          //printf("(v#) CAM software version (BCDver): %d.%d.%d\n",BCDver/1000,(BCDver/100)%10,BCDver%100);
+          //printf("(v#) CAM software version (BCDver): %d\n",BCDver);
+          printf("(v#) CAM software version (BCDver): %d.%d.%d\n",BCDver/1000,(BCDver/100)%10,BCDver%100);
           wait(); break;
           }
         int wifi=p[1];     //identify requested wifi router (1 or 2)
@@ -2833,6 +2834,7 @@ int parz(char *cmdString, int16_t *param){
 int bsN(int dec){
    //dec: %% bsNo that was parsed as decimal.
   if ((dec < 0)||(dec > 99)) { Serial.println("bsN Range Error"); return 00;} //must return a valid bsn!
+  if (dec==98) return 80;     //allows setting of maxSensors to 097+1 
   int bsn = dec%10;           //extract "s" for bsNo
   if (bsn > 7) bsn=7;         //adjust if ends in '8' or '9'
   return ((dec/10)*8 + bsn);  //00-79.
