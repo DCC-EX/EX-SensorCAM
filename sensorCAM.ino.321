@@ -106,7 +106,7 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #endif
 #include <EEPROM.h>
 #define EEPROM_SIZE 320+8+80+80+80 //long pointers to image +reboot flag(int)(+threshold,nLED,min2flip,maxSensors?)
-#define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (1byte)integer, others as byte
+#define EPvFlag      EEPROM_SIZE-80-80-80-8 //vFlag stored as (1byte)integer, others as byte
 //#define   also stepr/x_SF??
 #define EPminSensors EEPROM_SIZE-80-80-80-5 //beware of 0xFF
 #define EPnLED       EEPROM_SIZE-80-80-80-4 //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
@@ -216,7 +216,7 @@ int  SensorHisto[80*5];
 //bool CmdI2C=false;
 int  nLED=2;                  //Blk No assigned to programmable LED (PLED)- initially bank 2
  
-int  maxSensors=050;          //use to limit USB PRINTOUT time & line length 
+int  maxSensors=80;           //use to limit USB PRINTOUT time & line length 
 unsigned int  minSensors=000;           //a lower limit for sensor data output
     //used if using more sensors than can otherwise be processed in 100mSec.(42-> max bsNo=51 (5*8+1) ). It limits
     //monitor output (if more than 40, sensors loop time may suffer because of printout time to monitor)
@@ -366,7 +366,7 @@ void setup() {
       if(min2flip>9 || min2flip==0) min2flip=2;     //checks for unprogrammed EPROM
       maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
       if(maxSensors>80) maxSensors=80;
-	  printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
+      printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
     for (j=0;j<80;j++) SensorTwin[j]=0;     //initialise Twins, if none in eprom.
@@ -995,6 +995,7 @@ int bsn=0;
           EEPROM.write(EPSensorTwin+i,SensorTwin[i]);
           EEPROM.write(EPpvtThreshold+i,pvtThreshold[i]); 
           EEPROM.write(EPlineardX+i,lineardX[i]); 
+          delay(10);                    //added to avoid 'e' resets of Alive082 hw.
         }
         EEPROM.commit();                //ESP32 method
         EEPROM.end();                   //burn eeprom   
@@ -1294,10 +1295,10 @@ int bsn=0;
         if(FLASHLED==2)printf("CAMERA_MODEL_WROVER_KIT  ");
         printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
         if((p[1]<1)||(p[1]>2)) {
-          //printf("(v#) CAM software version (BCDver): %d\n",BCDver);
+          
           printf("(v#) CAM software version (BCDver): %d.%d.%d\n",BCDver/1000,(BCDver/100)%10,BCDver%100);
           wait(); break;
-          }
+        }
         int wifi=p[1];     //identify requested wifi router (1 or 2)
         printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
         printf("Waiting - press 'Enter' to trigger reset\n");
