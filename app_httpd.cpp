@@ -1,3 +1,33 @@
+/*
+ * extern "C" {
+#include "driver/ledc.h"
+}
+#include "esp32-hal-ledc.h"
+#undef CONFIG_ESP_FACE_DETECT_ENABLED
+#undef CONFIG_ESP_FACE_RECOGNITION_ENABLED
+*/
+#if CONFIG_IDF_TARGET_ESP32S3
+    // S3‑specific includes
+    extern "C" {
+    #include "driver/ledc.h"
+    }
+    // S3‑specific camera config
+    // S3‑specific LED flash code
+    // S3‑specific pin maps
+
+#else
+    // ESP32‑CAM (classic) includes
+    #include "esp32-hal-ledc.h"
+    // ESP32‑CAM camera config
+    // ESP32‑CAM LED flash code
+    // ESP32‑CAM pin maps
+
+#endif
+
+
+#define CONFIG_ESP_FACE_DETECT_ENABLED 0
+#define CONFIG_ESP_FACE_RECOGNITION_ENABLED 0  //**** preceeding added for sensorCAM
+
 // Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +41,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+
+
 #include "esp_http_server.h"
 #include "esp_timer.h"
 #include "esp_camera.h"
@@ -26,30 +59,32 @@
 #endif
 
 // Face Detection will not work on boards without (or with disabled) PSRAM
+/*                                          // **** deleted for SensorCAM
 #ifdef BOARD_HAS_PSRAM
 #define CONFIG_ESP_FACE_DETECT_ENABLED 1
 // Face Recognition takes upward from 15 seconds per frame on chips other than ESP32S3
 // Makes no sense to have it enabled for them
 #if CONFIG_IDF_TARGET_ESP32S3
-#define CONFIG_ESP_FACE_RECOGNITION_ENABLED 1
-#else
+//#define CONFIG_ESP_FACE_RECOGNITION_ENABLED 1   // **** deleted for SensorCAM
+//#else                                           // **** deleted for SensorCAM
 #define CONFIG_ESP_FACE_RECOGNITION_ENABLED 0
 #endif
 #else
 #define CONFIG_ESP_FACE_DETECT_ENABLED 0
 #define CONFIG_ESP_FACE_RECOGNITION_ENABLED 0
 #endif
+*/
 
 #if CONFIG_ESP_FACE_DETECT_ENABLED
 
 #include <vector>
-#include "human_face_detect_msr01.hpp"
-#include "human_face_detect_mnp01.hpp"
+//#include "human_face_detect_msr01.hpp"    // **** deleted for SensorCAM
+//#include "human_face_detect_mnp01.hpp"    // **** deleted for SensorCAM
 
 #define TWO_STAGE 1 /*<! 1: detect by two-stage which is more accurate but slower(with keypoints). */
                     /*<! 0: detect by one-stage which is less accurate but faster(without keypoints). */
-
-#if CONFIG_ESP_FACE_RECOGNITION_ENABLED
+/*
+#if CONFIG_ESP_FACE_RECOGNITION_ENABLED   // **** disabled for sensorCAM
 #include "face_recognition_tool.hpp"
 #include "face_recognition_112_v1_s16.hpp"
 #include "face_recognition_112_v1_s8.hpp"
@@ -58,7 +93,7 @@
 
 #define FACE_ID_SAVE_NUMBER 7
 #endif
-
+*/
 #define FACE_COLOR_WHITE 0x00FFFFFF
 #define FACE_COLOR_BLACK 0x00000000
 #define FACE_COLOR_RED 0x000000FF
@@ -205,7 +240,7 @@ static int rgb_printf(fb_data_t *fb, uint32_t color, const char *format, ...)
     return len;
 }
 #endif
-static void draw_face_boxes(fb_data_t *fb, std::list<dl::detect::result_t> *results, int face_id)
+static void draw_face_boxes(fb_data_t *fb, std::list<dl::detect::result_t> *results, int face_id) 
 {
     int x, y, w, h;
     uint32_t color = FACE_COLOR_YELLOW;
@@ -313,9 +348,18 @@ static esp_err_t bmp_handler(httpd_req_t *req)
     httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.bmp");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-    char ts[32];
-    snprintf(ts, 32, "%ld.%06ld", fb->timestamp.tv_sec, fb->timestamp.tv_usec);
-    httpd_resp_set_hdr(req, "X-Timestamp", (const char *)ts);
+char ts[32];
+
+#if CONFIG_IDF_TARGET_ESP32S3    // S3: time_t is 64‑bit
+    snprintf(ts, sizeof(ts), "%lld.%06ld",
+             (long long)fb->timestamp.tv_sec, (long)fb->timestamp.tv_usec);
+#else                            // ESP32‑CAM: time_t is 32‑bit
+    snprintf(ts, sizeof(ts), "%lu.%06lu",
+             (unsigned long)fb->timestamp.tv_sec, (unsigned long)fb->timestamp.tv_usec);
+#endif
+
+httpd_resp_set_hdr(req, "X-Timestamp", ts);
+
 
 
     uint8_t * buf = NULL;
@@ -379,9 +423,18 @@ static esp_err_t capture_handler(httpd_req_t *req)
     httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-    char ts[32];
-    snprintf(ts, 32, "%ld.%06ld", fb->timestamp.tv_sec, fb->timestamp.tv_usec);
-    httpd_resp_set_hdr(req, "X-Timestamp", (const char *)ts);
+char ts[32];
+
+#if CONFIG_IDF_TARGET_ESP32S3    // S3: time_t is 64‑bit
+    snprintf(ts, sizeof(ts), "%lld.%06ld", 
+             (long long)fb->timestamp.tv_sec, (long)fb->timestamp.tv_usec);
+#else                           // ESP32‑CAM: time_t is 32‑bit
+    snprintf(ts, sizeof(ts), "%lu.%06lu",
+             (unsigned long)fb->timestamp.tv_sec, (unsigned long)fb->timestamp.tv_usec);
+#endif
+
+httpd_resp_set_hdr(req, "X-Timestamp", ts);
+
 
 #if CONFIG_ESP_FACE_DETECT_ENABLED
     size_t out_len, out_width, out_height;
@@ -1383,13 +1436,40 @@ void startCameraServer()
         httpd_register_uri_handler(stream_httpd, &stream_uri);
     }
 }
-
+/*
 void setupLedFlash(int pin) 
 {
     #if CONFIG_LED_ILLUMINATOR_ENABLED
-    ledcSetup(LED_LEDC_CHANNEL, 5000, 8);
-    ledcAttachPin(pin, LED_LEDC_CHANNEL);
+    ledcSetup(LED_LEDC_CHANNEL, 5000, 8);        // **** deleted for SensorCAM
+    ledcAttachPin(pin, LED_LEDC_CHANNEL)
     #else
     log_i("LED flash is disabled -> CONFIG_LED_ILLUMINATOR_ENABLED = 0");
     #endif
+};
+*/
+void setupLedFlash(int pin)                        // **** added for SensorCAM
+{
+#if CONFIG_LED_ILLUMINATOR_ENABLED
+
+    // --- LEDC timer config ---
+    ledc_timer_config_t ledc_timer = {};   // zero‑initialise all fields
+    ledc_timer.speed_mode      = LEDC_LOW_SPEED_MODE;
+    ledc_timer.duty_resolution = LEDC_TIMER_8_BIT;
+    ledc_timer.timer_num       = LEDC_TIMER_0;
+    ledc_timer.freq_hz         = 5000;
+    ledc_timer.clk_cfg         = LEDC_AUTO_CLK;
+    ledc_timer_config(&ledc_timer);
+
+    // --- LEDC channel config ---
+    ledc_channel_config_t ledc_channel = {};   // zero‑initialise all fields
+    ledc_channel.gpio_num    = pin;
+    ledc_channel.speed_mode  = LEDC_LOW_SPEED_MODE;
+    ledc_channel.channel     = LEDC_CHANNEL_0;
+    ledc_channel.intr_type   = LEDC_INTR_DISABLE;
+    ledc_channel.timer_sel   = LEDC_TIMER_0;
+    ledc_channel.duty        = 0;
+    ledc_channel.hpoint      = 0;
+    ledc_channel_config(&ledc_channel);
+
+#endif
 }

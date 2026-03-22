@@ -39,7 +39,7 @@ The configuration file for ESP32-CAM based sensorCAM
 //
 // Your SSID may not contain ``"'' (double quote, ASCII 0x22).
 //#define WIFI_SSID "Your network name"
-#define WIFI_SSID    "Your network name"
+#define WIFI_SSID  "Your network name"
 //
 // WIFI_PASSWORD is the network password for your home network or if
 // you want to change the password from default AP mode password
@@ -52,16 +52,17 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define ALTWIFI_SSID     "Your Alt.net name"
 //#define ALTWIFI_PWD  "Your Alt.netPassword"
 #define ALTWIFI_SSID     "Optus_7CAD47"
-#define ALTWIFI_PWD  "awsQUtdfDe45VX"
+#define ALTWIFI_PWD  "adetrhe63XPPjX"
 //
 // To invoke TWOIMAGE Averaging feature on more/less virtual Sensors, adjust this parameter
 // this average may reduce sensitivity to noise BUT may increase response time by 100mSec to minimal level changes 
 // use 2 image pixel level average for sensor to filter noise below this bsNo.
 //#define TWOIMAGE_MAXBS 030
-#define TWOIMAGE_MAXBS 030 
-// 
+#define TWOIMAGE_MAXBS 030
+//                                                                                
 // Set the I2C device address 
 // Try to keep in range 0x11-0x14 (CAM/CAM1 to CAM4)
+//
 //#define I2C_DEV_ADDR 0x11  // default
 #define I2C_DEV_ADDR 0x11 
 // 
@@ -75,7 +76,7 @@ The configuration file for ESP32-CAM based sensorCAM
 // Set baud rate for USB port communications
 // Very slow response will be observed for serial image downloads at less than 115200 baud 
 // however if long unbuffered USB cable is used a slower rate may be unavoudable.
-//#define BAUD 115200      // Limits full QVGA Serial image transfer time to 13seconds.      
+//#define BAUD 115200      // Limits full QVGA Serial image transfer time to 13seconds (3sec. for S3 CAM)
 #define BAUD 115200          
 //
 // Set Sensor size at 0 for default 4x4 pixel size (16 usable pixels)
@@ -83,10 +84,13 @@ The configuration file for ESP32-CAM based sensorCAM
 //#define SEN_SIZE 2       //2 gives 6x6 pixel sensor size (16 usable corner pixels)
 #define SEN_SIZE 0         //0 gives standard 4x4 pixels
 //
-// Setup for linear sensors
-//#define STEPR_SF 1         //scale linear row steps (default 8 gives max length 56(8*7) pixels / line segment)
-//#define STEPX_SF 1
-//
-// default is set for ESP32-CAM.  If using a (FREENOVE) ESP32-WROVER-CAM camera(with integral USB) then use..
-//#define CAMERA_MODEL_WROVER_KIT
+// default is set for ESP32-CAM (Thinker).  If using a (FREENOVE) ESP32-xx-CAM camera(with integral USB) then choose..
+//#define CAMERA_MODEL_WROVER_KIT     // and use Board: "AI Thinker ESP32-CAM" from Espressif Systems version 2.0.17
+//OR for ESP32-S3 WROOM CAM, use #define below & use Board: "ESP32S3 Dev Module" from Espressif Systems version 3.3.7 
+//#define CAMERA_MODEL_WROOM_S3       // and use the CAM's fast USB-OTG port (for fast image downloads)
+//#define CAMERA_MODEL_WROOM_S3
+
+#define NLED 1
+#define STARTUP_DELAY 2000
+
 /////////////////////////////////////////////////////////////////////////////////////
