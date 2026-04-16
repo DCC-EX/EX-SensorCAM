@@ -1,0 +1,48 @@
+
+// setup for sensorCAM on an ESP32-CAM NUMDigitalPins <= 80
+// assumes 700 is first vpin (e.g. create in myAutomation.h: HAL(EXSensorCAM,700,80,0x11)
+// the optional SETUP operations below initiate (jmri) CS monitoring of sensors for any change of state
+// Mostly useful during debug of initial system but loads CS with extra MPU & RAM use. Use judiciously.
+
+I2CManager.setClock(100000);   //to set i2c bus clock rate (redundant/automatic after CS v5.5.24)
+
+//         id vPin	      	    
+SETUP("<Z 100 700 0>");     // set up for control OUTPUT on vpin #00
+
+// start of up to 80 sensors numbered bsNo's 100 to 197 (CAM1: 0/0 to 9/7)
+SETUP("<S 100 700 0>");     // first sensor (S00) (reserved for reference sensor)  
+SETUP("<S 101 701 0>");     // CAM sensor S01
+SETUP("<S 102 702 0>");     // S02
+//etc. (as needed)
+SETUP("<S 107 707 0>");     // S07
+//SETUP("<S 110 708 0>");   // S10 Note: suggested id is b/s format; vpin is DEC.
+
+// To create a bulk set of sensors (e.g. Sbs 1/0 to 2/7) with c++ code (and b/s id) use... 
+for(int b=1; b<=2;b++) for(int s=0;s<8;s++) Sensor::create(100+b*10+s,700+b*8+s,1); 
+// For another 2 banks (3 & 4)
+for(int b=3; b<=4;b++) for(int s=0;s<8;s++) Sensor::create(100+b*10+s,700+b*8+s,1); 
+
+// For single bank (5)
+for(int b=5; b<=5;b++) for(int s=0;s<8;s++) Sensor::create(100+b*10+s,700+b*8+s,1); 
+
+// for a single bank, the above long line can be simplified as examples below
+
+for(int s=0;s<8;s++)Sensor::create(100+6*10+s,700+6*8+s,1);   //CAM #1 bank 6
+
+for(int s=0;s<8;s++)Sensor::create(100+7*10+s,700+7*8+s,1);   //CAM #1 bank 7
+
+//for(int s=0;s<8;s++)Sensor::create(100+8*10+s,700+8*8+s,1);   //CAM #1 bank 8 
+
+//for(int s=0;s<8;s++)Sensor::create(100+9*10+s,700+9*8+s,1);   //CAM #1 bank 9
+
+//***** N.B. 
+//NOTE:  Every sensor created requires several bytes of RAM so can overfill a MEGA if created 80 (or 160)
+//  so comment out lines(banks) you don't need to see on the CS monitor (extras are also distracting!).
+//  Commented out setup/create lines do NOT stop all sensors in myAutomation.h working, only CS display.
+//  If you want to monitor only 2 sensors then comment out the bank and put in two SETUP() lines.
+
+// for CAM2 similar...
+for(int s=0;s<8;s++)Sensor::create(200+1*10+s,600+1*8+s,1);  //CAM2 bank 1
+//for(int s=0;s<8;s++)Sensor::create(200+2*10+s,600+2*8+s,1);  //CAM2 bank 2
+//for(int s=0;s<8;s++)Sensor::create(200+3*10+s,600+3*8+s,1);  //CAM2 bank 3
+//  

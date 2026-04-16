@@ -85,10 +85,10 @@ The configuration file for ESP32-CAM based sensorCAM
 #define SEN_SIZE 0         //0 gives standard 4x4 pixels
 //
 // default is set for ESP32-CAM (Thinker).  If using a (FREENOVE) ESP32-xx-CAM camera(with integral USB) then choose..
+//#define CAMERA_MODEL_THINKER        // optional for basic ESP32-CAM
 //#define CAMERA_MODEL_WROVER_KIT     // and use Board: "AI Thinker ESP32-CAM" from Espressif Systems version 2.0.17
 //OR for ESP32-S3 WROOM CAM, use #define below & use Board: "ESP32S3 Dev Module" from Espressif Systems version 3.3.7 
 //#define CAMERA_MODEL_WROOM_S3       // and use the CAM's fast USB-OTG port (for fast image downloads)
-//#define CAMERA_MODEL_WROOM_S3
 
 #define NLED 1
 #define STARTUP_DELAY 2000
