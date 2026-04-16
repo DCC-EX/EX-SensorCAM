@@ -1,6 +1,8 @@
 //sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 320 //test
-/*  //v320  add check byte[31] to i2c myWire.write
+#define BCDver 321 // maxSensors PROM bug fix & testing for IR bright4 vs. bright(16)
+/*  //v321  add STARTUP_DELAY.  fix blank PROM maxSensors bug. Allow m0,98 (80)
+ *          add focused bright option for bpd, specifically for IR sensor markers (for h5 && bsn>07)
+    //v320  add check byte[31] to i2c myWire.write
     //v319  bulk removal pvtThresholds (t1,%%).  Limit minSensors < maxSensors. <Nt ##> sends selected sensors.    
     //v318  now also Accepts CS style sensorCAM cmds (<N  >), and more spaces in commands, from CAM USB monitor
     //v317c set minSensors to skip scroll status & (working) sensors below minSensors, unless set to default 0
@@ -37,6 +39,9 @@
 #endif
 #ifndef SEN_SIZE
 #define SEN_SIZE 0      //sensor expansion - add SEN_SIZE rows and columns + through 4x4 sensor. 
+#endif
+#ifndef STARTUP_DELAY
+#define STARTUP_DELAY 2000 
 #endif
 
 #define EXIOINIT 0xE0   // CS: CAM config request
@@ -101,7 +106,7 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #endif
 #include <EEPROM.h>
 #define EEPROM_SIZE 320+8+80+80+80 //long pointers to image +reboot flag(int)(+threshold,nLED,min2flip,maxSensors?)
-#define EPvFlag   EEPROM_SIZE-80-80-8   //VFlag stored as (1byte)integer, others as byte
+#define EPvFlag      EEPROM_SIZE-80-80-80-8 //vFlag stored as (1byte)integer, others as byte
 //#define   also stepr/x_SF??
 #define EPminSensors EEPROM_SIZE-80-80-80-5 //beware of 0xFF
 #define EPnLED       EEPROM_SIZE-80-80-80-4 //NOTE: these cells have garbage(FF?) in unprogrammed CAM - needing init.
@@ -126,7 +131,7 @@ bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false};
 #define IFD  if(DEBUG[2])     //Lower priority Debug control
 #define IFI2C if(DEBUG[3])    //output generated i2c packets 
 #define IFN  if(DEBUG[4])     //output relating to pixel noise measurements
-#define IF5  if(DEBUG[5])     //show parz output
+#define IF5  if(DEBUG[5])     //if bsn>=010 use 4pixel (IR) brightness only //show parz output
 #define IF6  if(DEBUG[6])     //grab_ref message printed on full execution of S666init_SensorRefs(prefill) 
 #define IF7  if(DEBUG[7])     //stop/wait on a trip of bank # or sensor 16. only if LAST 'h' was h7 or h7#
 #define IF8  if(DEBUG[8])     //write EX-CS cmd to USB e.g. EXIODPUP gives "E2", undefined cmds give "#EF" error
@@ -211,7 +216,7 @@ int  SensorHisto[80*5];
 //bool CmdI2C=false;
 int  nLED=2;                  //Blk No assigned to programmable LED (PLED)- initially bank 2
  
-int  maxSensors=050;          //use to limit USB PRINTOUT time & line length 
+int  maxSensors=80;           //use to limit USB PRINTOUT time & line length 
 unsigned int  minSensors=000;           //a lower limit for sensor data output
     //used if using more sensors than can otherwise be processed in 100mSec.(42-> max bsNo=51 (5*8+1) ). It limits
     //monitor output (if more than 40, sensors loop time may suffer because of printout time to monitor)
@@ -221,6 +226,8 @@ byte Sensor666[80*16*3];      //buffer to hold decoded latest 4x4 sensor images 
 byte Sensor_ref[80*4*4*3];    //array of 80 reference grabs (QVGA: 4x4x3RGB =48 bytes/sensor (total 3840 bytes 
 unsigned int SensorRefRatio[80*12];        //array of 3 x 4 quadrant colour ratios (r/g g/b b/r)x4
 int  Sen_Brightness_Ref[80];  //sum of pixels in all quadrant colours combined. max=3024 (4*4*3*63) for 666/pixel 
+int  Sen_Brightness_Ref4[80];  //sum of rgb of centre 4 pixels (4x3=12 bytes)
+
 byte SensorBlockStat[11]={0,0,0,0,0,0,0,0,0,0,0};//array of bits(8/bank) each high if corresponding sensor tripped
           // If SensorBlockStat[b] ==0 then NO sensors in that block set are occupied (sensor[b0] is LSB in byte)
 unsigned int quad[5]={0,0,0,0,0};    //a temporary place to hold current sensor image quadrant brightness values 
@@ -261,7 +268,8 @@ char* password=ShedWIFIpwd;  //must match local WiFi !
 char* ssid2 = Altssid;                 //alternate ssid use with "v2" cmd
 char* password2=AltWIFIpwd;
 
-int  fbheight = 240;    //number of rows in fb default QVGA 320x240
+int  fbheight = 240;    //number of rows in fb. default QVGA 320x240
+int  fbwide = 320;      //number of pixel columns in fb
 int  pitch=640*3;       //image pixels/row (RGB888 VGA 640x480)
 char cmdString[64];     // holds a whole command line from input source
 char cmdChar;
@@ -357,6 +365,7 @@ void setup() {
       min2flip=int(EEPROM.read(EPmin2flip));        //default: 2
       if(min2flip>9 || min2flip==0) min2flip=2;     //checks for unprogrammed EPROM
       maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
+      if(maxSensors>80) maxSensors=80;
       printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
@@ -415,7 +424,7 @@ void setup() {
         delay(10000);
         ESP.restart();
       }
-      delay(2000);                  //Prof's mod to help startup
+      delay(STARTUP_DELAY);                  //Prof's mod to help startup. default 2000
       MyWire.onReceive(i2cReceive);                //set up response to receive & request
       MyWire.onRequest(i2cRequest);                //links to void i2cRequest()
 bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave needs no FREQ - Master's choice
@@ -619,7 +628,7 @@ uint32_t  Ycksum=0;              //Calculate checksum
           if (cmdChar == '\n'){                   //don't process cmdString until get LF (\n)
  
             nParam=parz(cmdString,p);
-/***/  //       printf(("parz %d parameters; p[0] %c %d %d %d %d \n"),nParam, byte(p[0]),p[1],p[2],p[3],p[4]);            
+/***/       IF5 printf(("parz %d parameters; p[0] %c %d %d %d %d \n"),nParam, byte(p[0]),p[1],p[2],p[3],p[4]);            
             processCmd(imagePtr,pitch,Sensor,nParam,p);  //process command line            
             cmdCount=0;      //reset command string index 
           }     
@@ -663,7 +672,7 @@ uint32_t  Ycksum=0;              //Calculate checksum
      }
   //compute new cratios etc for Sensor[00] latest av. reference UPDATE sensor_ref(00) every 6.4sec to new average
      if(frameNo==2) {                       //grab_ref() includes calculation of new Cratios & brightness
-       grab_ref(0,Sensor_ref,S666_pitch,0L,&Sensor_ref[00],&Sen_Brightness_Ref[00],&SensorRefRatio[00]);  
+       grab_ref(0,Sensor_ref,S666_pitch,0L,&Sensor_ref[00],&Sen_Brightness_Ref[00],&SensorRefRatio[00],&Sen_Brightness_Ref4[00]);  
        Sen_Brightness_Ref[00]=r00Av; //Sum of (grab_ref)rounded averages is < Average of sum, use r00Av instead.
 /***/   IFN {Spr("adjusted _Brightness_ref[00] to Average "); Serial.println(Sen_Brightness_Ref[00]);}
      }
@@ -809,17 +818,18 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
       processCmd(imagePtr,pitch,Sensor,nParam,p);      //process command line
       if(cmdString[0]!='w') newi2cCmd=false;  //if() lets newi2cCmd cancel 'w' without being discarded itself.
     }
-    else while (Serial.available() > 0) {         //each command is followed by a fresh loop to "get_image"
+    else while (Serial.available() > 0) {          //each command is followed by a fresh loop to "get_image"
       cmdChar=Serial.read();
       cmdString[cmdCount]=cmdChar;               //add it to cmd string
-      Spr(cmdChar);                      //immediate echo back to monitor
+      if(cmdChar != '\n') Spr(cmdChar);         //immediate echo back to monitor
       cmdCount+=1;
-      cmdCount=constrain(cmdCount,0,20);            //increment & limit string length
-      if (cmdChar == '\n'){                   //don't process cmdString until get LF (\n)
-        Serial.println("**************"); // return a new line to monitor
+      cmdCount=constrain(cmdCount,0,20);      //increment & limit string length
+      if (cmdChar == '\n'){                  //don't process cmdString until get LF (\n)
+        Serial.println(" ******");  // return a new line to monitor
         
-        nParam=parz(cmdString,p);     // parse ascii cmd
-/****/  IF5 printf(("parz: %d parameters; p[0-4]: %c %d %d %d %d bsN(p[1]): 0%o \n"),nParam,p[0],p[1],p[2],p[3],p[4],bsN(p[1]));
+        nParam=parz(cmdString,p); 
+        // parse ascii cmd
+/****/  //IF5 printf(("parz: %d parameters; p[0-4]: %c %d %d %d %d bsN(p[1]): 0%o \n"),nParam,p[0],p[1],p[2],p[3],p[4],bsN(p[1]));
                    
         processCmd(imagePtr,pitch,Sensor,nParam,p);  //process command line 
         cmdCount=0;      //reset command string index 
@@ -831,6 +841,19 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
 /***/ IF0 delay(1000); //delay a second for serial.print debug to catch up?
 }               //end of main loop
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// FUNCTION TO EXECUTE A REFRESH OF SENSORREF[00] r00 
+ void DOr00() {
+      for (int i=0;i<80;i++){             
+        if (Sensor[i]>0)          //DEFINED so grab_ref(); Gets an image from Sensor666[] and computes new cRatios and brightness (*NO AVERAGING!*)
+           grab_ref(bsn,Sensor666,S666_pitch,long(i*S666_pitch),&Sensor_ref[i*S666_pitch],&Sen_Brightness_Ref[i],&SensorRefRatio[i*12],&Sen_Brightness_Ref4[i]);  //includes new Cratios & brightness
+        averageRbsn=0;            //set a flag for main loop to compute a multi-second average Reference and update _ref[0-79]
+        averageRcounter=AVCOUNT;  //initiate down counter.  (10 per second)               
+      }     //end of r00
+      printf("Ref: r00 refreshes ALL defined sensor references with new Cratios & brightness\n");         
+      refBrightness=0;                      //recalculate a refBrightness from Sensor_ref - perhaps should ONLY do when r00 is executed not whenever ref(00) updated
+      for(int i=0;i<S666_pitch;i++) refBrightness+=int(Sensor_ref[i]);    //sum S666_pitch pixlets for 6x6 Sensor[0] max 6804r02        
+}   // ***************************** 
 
 //  PROCESS A COMMAND STRING FROM USER    
 void processCmd(byte *imagePtr,int pitch,unsigned long *Sensor,int nParam,int16_t *p){    //process parz command in p[]                                        
@@ -867,7 +890,7 @@ int bsn=0;
           SensorActive[bsn]=true;              //set active and grab new ref
           SensorActiveBlk[bsn>>3] |= mask[bsn&0x07];
           grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],
-                                                                &Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12]);
+                                                                &Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12],&Sen_Brightness_Ref4[bsn]);
                                    //includes new Cratios & brightness                                                                
            //NOTE WELL: without new frames, any new reference won't be much use with new coordinates!
 /***/     printf("updated Sensor_ref[] \n");  //HEX bytes(0-5)(BGRBGR): %X %X %X %X %X %X \n",
@@ -941,9 +964,9 @@ int bsn=0;
         stdCtimer=millis()+10000;        //start a timer - wait 10sec for adjustments to settle automatically then turn off AGC say 
         break;              //leaves flags set for main loop() to calibrate from fresh images.        
       }
-      case 'd':{      //d%%#; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
+      case 'd':{      //d%%,#; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
         if(nParam==1) {   
-          printf("(d%%%%#) Diff score for S%%%%. Optional repeat # times including frame samples \n ");
+          printf("(d%%%%,#) Diff score for S%%%%. Optional repeat # times including frame samples \n ");
           wait();
           break;
         }
@@ -959,7 +982,7 @@ int bsn=0;
         break;        //leaves flag for loop() to complete print output.       
       } 
       case 'e':{     //e;  EPROM burn any changes to Sensor[] & some other parameters
-        printf("(e)EPROM: Save latest threshold(%d), min2flip(%d), nLED(%d), minSensors(0%o), maxSensors(0%o), Sensor[] SensorTwin[] & pvtThreshold[] to EPROM\n"\
+        printf("(e) EPROM: Save latest threshold(%d), min2flip(%d), nLED(%d), minSensors(0%o), maxSensors(0%o), Sensor[] SensorTwin[] & pvtThreshold[] to EPROM\n"\
                ,threshold,min2flip,nLED,minSensors,maxSensors);
         EEPROM.write(EPminSensors,byte(minSensors));
         EEPROM.write(EPnLED,byte(nLED));
@@ -972,6 +995,7 @@ int bsn=0;
           EEPROM.write(EPSensorTwin+i,SensorTwin[i]);
           EEPROM.write(EPpvtThreshold+i,pvtThreshold[i]); 
           EEPROM.write(EPlineardX+i,lineardX[i]); 
+          delay(10);                    //added to avoid 'e' resets of Alive082 hw.
         }
         EEPROM.commit();                //ESP32 method
         EEPROM.end();                   //burn eeprom   
@@ -1015,20 +1039,20 @@ int bsn=0;
                for(c=0;c<9;c++) DEBUG[c]=false;
                printf("turn off Help: DEBUG0(detail) off; DB1(timing) off; DB2(gen) off; DB3(i2c) off; DB4(noise) off; DB5 off; \n"); 
           }
-          if((p[1]>9) && (p[1]<99)){   //set a maxSensors bsn limit on sensor state printout from 4min to 36max(044) (digit[2]x4)         
+          if((p[1]>9) && (p[1]<99)){   //set a maxSensors bsn limit on sensor state printout          
                 maxSensors=bsN(p[1]);  
-                printf("(h%% Setting maxSensors to 0%o\n",maxSensors);
+                printf("(h%%%% Setting maxSensors to 0%o\n",maxSensors);
           }  
         }else{    //just print info.
               printf("(h$) set debug $ level ON.  (h9) turns off levels 0 to 8.  (h%%%%) sets maxSensors (010-097)\n");            
-              printf(" options: h0(detail) h1(timing) h2(gen) h3(i2c) h4(noise) h5(parz) h7,#(wait on bank # trip) h8(CS cmds)\n"); 
+              printf(" options: h0(detail) h1(timing) h2(gen) h3(i2c) h4(noise) h5(parz/IR) h7,#(wait on bank # trip) h8(CS cmds)\n"); 
               printf("current help: ");     //if not h# or h9, print out current settings
               if(DEBUG[0]==1)printf("DE0(detail) ON; ");
               if(DEBUG[1]==1)printf("DB1(timing) ON; ");
               if(DEBUG[2]==1)printf("DB2(gen) ON; ");
               if(DEBUG[3]==1)printf("DB3(i2c) ON; ");
               if(DEBUG[4]==1)printf("DB4(noise) ON; ");
-              if(DEBUG[5]==1)printf("DB5(parz) ON; \n");
+              if(DEBUG[5]==1)printf("DB5(parz/IR) ON; \n");
               if(DEBUG[7]==1)printf("DBt ON; halt scroll on trip of bank %d \n",h7block);
               printf(" dbug=%d, maxSensors: 0%o (brightSF:%d)\n",dbug,maxSensors,brightSF); 
               wait();                 //stops looping indefinitely until input a newline (\n)       
@@ -1110,7 +1134,7 @@ int bsn=0;
           if(p[2]>=100) minSensors=bsN(p[2]%100);   //fudge to let (m$,1%%) set minSensors - but can also use n$,%%
           else if(bsN(p[2])>minSensors) maxSensors=bsN(p[2]);
         }
-        printf("(m$[,%%%%]) Min/Max: $ frames min2flip (trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, NLED %d, "
+        printf("(m$[,%%%%]) Min/Max: $ frames min2flip(trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, NLED %d, "
         "threshold %d, TWOIMAGE_MAXBS 0%o \n", min2flip, maxSensors, minSensors, nLED, NLED, threshold, TWOIMAGE_MAXBS);  
         wait();
         break;
@@ -1172,7 +1196,7 @@ int bsn=0;
           if((bsn>0) && (Sensor[bsn]>0) ){ //if not 00 & defined, set enAble & refresh reference for 1 bsNo alone          
             SensorActive[bsn]=true;//grab_ref() gets image from Sensor666[] and computes new cRatios & brightness
             SensorActiveBlk[bsn>>3] |= mask[bsn&7];
-            grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],&Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12]);  //includes new Cratios & brightness
+            grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],&Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12],&Sen_Brightness_Ref4[bsn]);  //includes new Cratios & brightness
             printf("References: enable new Sensor_ref[%d/%d]; 1st 2 HEX rgb pixels[0-5]: %X %X %X  %X %X %X\n",bsn>>3,bsn&7,Sensor_ref[bsn*S666_pitch],Sensor_ref[bsn*S666_pitch+1],Sensor_ref[bsn*S666_pitch+2],Sensor_ref[bsn*S666_pitch+3],Sensor_ref[bsn*S666_pitch+4],Sensor_ref[bsn*S666_pitch+5]);
             printf("full new ref[bsNo] from current frame only - average ref still to be calculated\n");
 /***/       IFN write_img_sample(&Sensor666[bsn*48], S666_row, 0L, 12 );//print out ref & new img[bsNo] (1 frame)
@@ -1270,7 +1294,11 @@ int bsn=0;
       case 'v':{      //v#;  reboot & select video webserver mode
         if(FLASHLED==2)printf("CAMERA_MODEL_WROVER_KIT  ");
         printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
-        if((p[1]<1)||(p[1]>2)) {printf("(v#) CAM software version (BCDver): %d\n",BCDver); wait(); break;}
+        if((p[1]<1)||(p[1]>2)) {
+          
+          printf("(v#) CAM software version (BCDver): %d.%d.%d\n",BCDver/1000,(BCDver/100)%10,BCDver%100);
+          wait(); break;
+        }
         int wifi=p[1];     //identify requested wifi router (1 or 2)
         printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
         printf("Waiting - press 'Enter' to trigger reset\n");
@@ -1637,20 +1665,21 @@ short int brightnessMax = 0;
 
 //  FUNCTION TO SAVE SENSOR REFERENCE IMAGE AND COMPUTE REF BRIGHTNESS AND CRATIOS
 /*   grab_ref(bsn,Sensor666,S666_pitch,long(bsNo*S666_pitch),&Sensor_ref[bsNo*S666_pitch],&Sen_Brightness_Ref[bsNo],&SensorRefRatio[bsNo*12]); */ 
-void grab_ref(int bsn, byte *iD, int pitch, long SensorPtr, byte *Ref, int *bright, unsigned int *Cratios) {     //includes new Cratios 
+void grab_ref(int bsn, byte *iD, int pitch, long SensorPtr, byte *Ref, int *bright, unsigned int *Cratios, int *bright4) { //includes new Cratios 
   //iD parameter must be buffer of new image data to grab from. e.g. &Sensor[bsn*S666_pitch]
   //pitch is number of image bytes to grab for one Sensor e.g. S666_pitch
   //SensorPtr is offset bytes to required start of data (relative to iD[0]
   //Ref destination must be &Sensor_ref[bsNo*S666_pitch] similarly &bright[bsNo]
   //Cratios is array of (4*3) colour ratios (r/g g/b b/r) e.g. &SensorRefRatio[bsn*12]            
-      bright[0]=0;
+      bright[0]=0; bright4[0]=0;
       iD=iD+SensorPtr;  //sens points to first byte of sensor (first colour of top left pixel)
       for (int i=0;i<pitch;i++) {  
 /***/   IFN {Spr("+"); Spr(int(iD[i]));} 
         Ref[i]=iD[i];          // for RGB565, just need to copy sensor from Sensor666 to Sensor_Ref      
         bright[0] += iD[i];    // calculate new brightness value (sum of all sensor pixel colours)
       } 
-/***/ IFN {Spr(" bright:");Serial.println(bright[0]);}
+      for (int j=15;j<21;j++) bright4[0] += iD[j]+iD[j+12];  //sum 6 consecutive bytes x2 to cover centre 4 pixels.         
+/***/ IFN {Spr(" bright:");Serial.println(bright[0]);Spr(" 4:"); Spr(bright4[0]);}
       Compute_CRatios(iD, S666_row, 0L, Cratios, 2);   //iD has been advanced with iD=iD+SensorPtr; above
       bsnUpdated=bsn;
 /***/ IFN  {Spr("bsn:");Spr(bsn,OCT);Spr(" Computed new Cratios, and brightness of ");Serial.println(bright[0]);}
@@ -1834,7 +1863,7 @@ int S666init_SensorRefs(int prefill){
 /***/   IF6 printf("dbug6 - grab_ref for all enabled sensors\n");
           for (int bsn=0;bsn<80;bsn++)    //grab sensorRef[] images for all active bsNo's
             if(SensorActive[bsn]){        //call grab_ref() for Active sensors only (includes new Cratios & brightness calculations) 
-              grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch), &Sensor_ref[bsn*S666_pitch], &Sen_Brightness_Ref[bsn], &SensorRefRatio[bsn*12]);  
+              grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch), &Sensor_ref[bsn*S666_pitch], &Sen_Brightness_Ref[bsn], &SensorRefRatio[bsn*12], &Sen_Brightness_Ref4[bsn]);  
             }
           prefill=0;            //terminate prefill countdown
           cFlag=0;              // clear request - set cFlag to 0 so it won't invoke another full grab 
@@ -1850,11 +1879,19 @@ bool processDiff(int bsn){
     static int  SensorFilter[80];  //slows dropout by a cycle or two - must be unoccupied for more than 100mSec
     int SenHiCnt;
     int Threshold;
-        emptyStateCtr[bsn]++;                   //increment sensor "un-tripped" counter (clear later if tripped 
-        bright=quad[0]+quad[1]+quad[2]+quad[3];
-/***/   IF0 printf("bsn: 0x%x brightness quads: %d %d %d %d sum: %d _Ref %d\n",bsn,quad[0],quad[1],quad[2],quad[3],bright,Sen_Brightness_Ref[bsn]); 
-        if (bright>Sen_Brightness_Ref[bsn])bright= bright*16/Sen_Brightness_Ref[bsn]-16;    //rescale bright for addition to maxDiff
-        else bright=Sen_Brightness_Ref[bsn]*16/bright-16;  //produces a ratio of 0 up. (20% diff. gives bright=3)
+        emptyStateCtr[bsn]++;                  //increment sensor "un-tripped" counter (clear later if tripped 
+    int brightRef=Sen_Brightness_Ref[bsn];
+/**/    if(DEBUG[5] && bsn>07){                //IF5 h5 flag set & bsn>=010, use 4x pixel (IR) bright, else 16
+          brightRef=Sen_Brightness_Ref4[bsn];
+          bright=1;    //can't afford to divide by 0.
+          for (int j=15;j<21;j++) bright += Sensor666[bsn*S666_pitch+j] + Sensor666[bsn*S666_pitch+S666_pitch/4+j];  //(pitch=16*3)
+        }else{
+          bright=quad[0]+quad[1]+quad[2]+quad[3];  //quad[4] ?
+        }
+/***/   IF0 printf("bsn: 0x%x brightness quads: %d %d %d %d sum: %d _Ref %d Ref4 %d\n",bsn,quad[0],quad[1],quad[2],quad[3],bright,Sen_Brightness_Ref[bsn],brightRef); 
+       
+        if (bright>brightRef) bright= bright*16/brightRef-16;    //rescale bright for addition to maxDiff
+        else bright=brightRef*16/bright-16;  //produces a ratio of 0 up. (20% diff. gives bright=3 (adds 9 if brightSF=3)
         int b=bsn>>3; 
         int bpd=brightSF*bright+maxDiff;            //bpd = Brightness Plus colour Diff 
         if (bsn<maxSensors && bsn>=minSensors) {    //save bsn & bpd in i2c message
@@ -2579,7 +2616,7 @@ void averageRcalculation(int AVbsn,int Numbr){      //NOTE: function can only av
               }
             }
             if (averageRcounter==0) {         //now process into Sensor_ref[]         //includes new Cratios & brightness calculations
-              grab_ref(n,newref,48,0L,&Sensor_ref[n*48],&Sen_Brightness_Ref[n],&SensorRefRatio[n*12]);  //includes new Cratios & bright   
+              grab_ref(n,newref,48,0L,&Sensor_ref[n*48],&Sen_Brightness_Ref[n],&SensorRefRatio[n*12],&Sen_Brightness_Ref4[n]);  //includes new Cratios & bright   
 /***/         IFN {Spr(" Have set _ref[");Spr(n,OCT);Spr("] to average values.  _ref[0] & _ref[bsn] below:\n");}
 /***/         IFN if(AVbsn!=0) write_img_sample(Sensor_ref,12,AVbsn*48,24);      //print _ref[00] and (av) _ref[bsn]
             }          
@@ -2658,19 +2695,6 @@ void boxIt(unsigned long Point,int BSno){           //Use sensor() pointer into 
     return;
 }   // *****************************
 
-// FUNCTION TO EXECUTE A REFRESH OF SENSORREF[00] r00 
- void DOr00() {
-      for (int i=0;i<80;i++){             
-        if (Sensor[i]>0)          //DEFINED so grab_ref(); Gets an image from Sensor666[] and computes new cRatios and brightness (*NO AVERAGING!*)
-           grab_ref(bsn,Sensor666,S666_pitch,long(i*S666_pitch),&Sensor_ref[i*S666_pitch],&Sen_Brightness_Ref[i],&SensorRefRatio[i*12]);  //includes new Cratios & brightness
-        averageRbsn=0;            //set a flag for main loop to compute a multi-second average Reference and update _ref[0-79]
-        averageRcounter=AVCOUNT;  //initiate down counter.  (10 per second)               
-      }     //end of r00
-      printf("Ref: r00 refreshes ALL defined sensor references with new Cratios & brightness\n");         
-      refBrightness=0;                      //recalculate a refBrightness from Sensor_ref - perhaps should ONLY do when r00 is executed not whenever ref(00) updated
-      for(int i=0;i<S666_pitch;i++) refBrightness+=int(Sensor_ref[i]);    //sum S666_pitch pixlets for 6x6 Sensor[0] max 6804r02        
-}   // ***************************** 
-
 // FUNCTION TO COMPUTE NEW REF'S REGULARLY IF ACTIVE SENSORS NOT TRIPPED
 void refRefresh(bool suspend){ 
   static bool lastsuspend=true;
@@ -2702,7 +2726,7 @@ void refRefresh(bool suspend){
               newRef[i] = byte(avRefAccumulation[i]/NUM2AVERAGE);  //calc. average
               avRefAccumulation[i]=0;                 //clear accumulator
             }               //now calculate new reference parameters/ratios etc.
-            grab_ref(rbsn,newRef,S666_pitch,0L,&Sensor_ref[rbsn*S666_pitch],&Sen_Brightness_Ref[rbsn],&SensorRefRatio[rbsn*12]);
+            grab_ref(rbsn,newRef,S666_pitch,0L,&Sensor_ref[rbsn*S666_pitch],&Sen_Brightness_Ref[rbsn],&SensorRefRatio[rbsn*12],&Sen_Brightness_Ref4[rbsn]);
           }else{            //there was a trip so abort rbsn attempt
             for (i=0;i<48;i++) avRefAccumulation[i]=0;   //clear accumulator
           }
@@ -2749,10 +2773,10 @@ bool makeLinear( int bsn, int deltaR, int deltaX,bool newS, int sign ) {  //retu
       SensorActive[bsn+1]=true;
       SensorActiveBlk[(bsn+1)>>3] |= mask[(bsn+1)&0x07]; 
       grab_ref(bsn+1,Sensor666,S666_pitch,long((bsn+1)*S666_pitch),&Sensor_ref[(bsn+1)*S666_pitch],
-       /* make new sensor legitimate non blank */             &Sen_Brightness_Ref[bsn+1],&SensorRefRatio[(bsn+1)*12]); 
+       /* make new sensor legitimate non blank */ &Sen_Brightness_Ref[bsn+1],&SensorRefRatio[(bsn+1)*12],&Sen_Brightness_Ref4[bsn+1]); 
     }  //now grab a new ref image for the converted sensor
     grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],
-      /* make new sensor legitimate non blank */           &Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12]);      
+      /* make new sensor legitimate non blank */  &Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12],&Sen_Brightness_Ref4[bsn]);      
     return true;
 }   // *****************************
 
@@ -2811,6 +2835,7 @@ int parz(char *cmdString, int16_t *param){
 int bsN(int dec){
    //dec: %% bsNo that was parsed as decimal.
   if ((dec < 0)||(dec > 99)) { Serial.println("bsN Range Error"); return 00;} //must return a valid bsn!
+  if (dec==98) return 80;     //allows setting of maxSensors to 097+1 
   int bsn = dec%10;           //extract "s" for bsNo
   if (bsn > 7) bsn=7;         //adjust if ends in '8' or '9'
   return ((dec/10)*8 + bsn);  //00-79.
