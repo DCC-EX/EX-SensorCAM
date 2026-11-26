@@ -1,7 +1,16 @@
-//sensorCAM Alpha release                                                                                 limit >|
-#define BCDver 321 // maxSensors PROM bug fix & testing for IR bright4 vs. bright(16)
-/*  //v321  add STARTUP_DELAY.  fix blank PROM maxSensors bug. Allow m0,98 (80)
- *          add focused bright option for bpd, specifically for IR sensor markers (for h5 && bsn>07)
+//sensorCAM Alpha release                                                                                  limit >|
+#define BCDver 327  // grid option added to 'g'
+/*  //326   dark sensor noise mitigation.  Fix: IR detect 3->4 pixels.   
+    //325   added AEL9 and AGg9 as new settings for ov2640 after (9) seconds for longer term stability
+    //324   modified scroll ':' separator to indicate if ref "saturated"(by IR?). Added 'o99' & 'a99'
+    //324BG  change Printf() to Serial.printf() (Printf) & add some mods for TTY on S3 fast native USB 
+    //       ESP32S3: use board "ESP32S3 Dev Module". Changed sensorCAM.ino, configCAM, app_httpd & camera_pins.h 
+    //       added ESP32 S3 CAM, use Espressif 3.3.7 with IDE 2.3.6, but still use v2.0.17 for ESP32S CAMs (& CS)
+    //v322E  maxSensors PROM bug fix & testing for IR bright4 vs. bright(16)
+    //v322  added nvs partition, status print for 'e' EEPROM commit(), Cmd: prompt, delay(10) for EEPROM
+    //v321D added println(ESP.getSdkVersion());    //expected 4.4.4 got v4.4.7-dirty
+    //v321  add STARTUP_DELAY.  fix blank PROM maxSensors bug. Allow m0,98 (80)
+    //      add focused bright option for bpd, specifically for IR sensor markers (for h5 && bsn>07)
     //v320  add check byte[31] to i2c myWire.write
     //v319  bulk removal pvtThresholds (t1,%%).  Limit minSensors < maxSensors. <Nt ##> sends selected sensors.    
     //v318  now also Accepts CS style sensorCAM cmds (<N  >), and more spaces in commands, from CAM USB monitor
@@ -23,7 +32,8 @@
     //v302 add '+' alignment, & experiments with wire.write() strategies 
     //v301 adjust i2c 'p' & 'q' cmd. added Prof's startup delay(2000)
     //v300 working mods to deal with new IO_EXSensorCAM.h driver(v300)
-*/    
+*/ 
+//#elif defined(CAMERA_MODEL_AI_THINKER)   
 #if __has_include ( "configCAM.h")
   #include "configCAM.h"
 #else
@@ -66,15 +76,45 @@
 #include <Wire.h>         //esp32 i2c Wire library 
 TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = ) 
 
-     // define appropriate board (only AI_THINKER tested so far
-#ifndef CAMERA_MODEL_WROVER_KIT   // define in configCAM.h if appropriate 
-#define CAMERA_MODEL_AI_THINKER   // Select camera model for ESP32-CAM (deault: has OV2640 Camera module)
-#endif
-#include "camera_pins.h"          //for thinker, includes #define XCLK_GPIO_NUM 0
-
 #define I2C_FREQ 100000   //Master sets i2c clock frequency   MEGA uses default clock (100kBits/sec)
                         //Define GPIO ports for I/O use 
-#ifdef  CAMERA_MODEL_AI_THINKER                             
+
+//define pins for CAMERA_MODEL
+ //set options for ESP32_WROVER_KIT
+#ifdef CAMERA_MODEL_WROVER_KIT  // define WROVER_KIT or WROOM-S3 in configCAM.h if appropriate 
+#define CAMERA_MODEL 2
+#define I2C_SDA2 15         //for MyWire (twowire) i2c data GPIO pin 15
+#define I2C_SCL2 13         //for MyWire (twowire) i2c clock pin
+#define WEBPIN   14         // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
+#define GPIO0     0         // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
+#define FLASHLED  2         //GPIO2, when 2 HIGH turns on Red LED.  Use ~25mSec pulse to indicate new fb image.
+#define BLK0LED  33         //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
+#define BLK1LED  33         // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
+#define BLK2LED  33         //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
+#define BLK3LED  33         //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
+#define PLED     14         //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
+#define QLED     32         //assign a LED to configurable bank NLED output
+    
+#elif defined( CAMERA_MODEL_WROOM_S3 )     //set camera pin options
+#define CAMERA_MODEL 3  
+#define I2C_SDA2 47         //for MyWire (twowire) i2c data GPIO pin 47 
+#define I2C_SCL2 21         //for MyWire (twowire) i2c clock pin
+#define WEBPIN   14         // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid. 
+#define GPIO0     0         // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
+#define FLASHLED  2         // GPIO2, when 2 HIGH turns on Red LED.  Use ~25mSec pulse to indicate new fb image.
+#define BLK0LED  38         // 48 R? need code change to benefit from RGB neopixel on pin 48
+#define BLK1LED  38         // 48 Y?   WARNING: pin 38 - MUST NOT HAVE AN SD-CARD IN CAM !
+#define BLK2LED  38         // 48 G?
+#define BLK3LED  38         // 48 B? Could consider external (9?) neopixels :)
+#define PLED     14         //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
+#define QLED      1         //assign a LED to configurable bank NLED output 
+      // SPARE   38         //38 incompatible with SDcard !
+                       
+#else   //define CAMERA_MODEL_AI_THINKER as default
+#ifndef CAMERA_MODEL_AI_THINKER
+#define CAMERA_MODEL_AI_THINKER   // Select camera model for ESP32-CAM (deault: has OV2640 Camera module)
+#endif
+#define CAMERA_MODEL 1                              
 #define I2C_SDA2 15       //for MyWire (twowire) i2c data GPIO pin 15
 #define I2C_SCL2 13       //for MyWire (twowire) i2c clock pin
 #define WEBPIN  14        // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
@@ -86,24 +126,15 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 #define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
 #define PLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
 #define QLED    2         //configurable bank NLED output
-                          //GPIO14 multipurposed - LED pulls GPI14 high. Need to Gnd GPIO14 to select web server.
+       //GPIO14 multipurposed - LED pulls GPI14 high. Need to Gnd GPIO14 to select web server.
        //GPIO0 unavailable. Need to Gnd GPIO0 to program then needed for CAM CSI_MCLK
        //GPIO1 & GPIO3 reserved for TX/RX USB comms.
        //GPIO12 best left untouched. Used to set internal voltages for Embedded Flash? 
-       //    (tried to use, but rendered FLASH RAM unprogrammable!(stuffed one CAM)
-#else  //set options for ESP32_WROVER_KIT
-#define I2C_SDA2 15       //for MyWire (twowire) i2c data GPIO pin 15
-#define I2C_SCL2 13       //for MyWire (twowire) i2c clock pin
-#define WEBPIN  14        // if grounded on Reset, this pin invokes web server mode - uses default WiFi(1) ssid . 
-#define GPIO0    0        // Used as CSI MCLK output, so best to not ground while running UNLESS in reset mode.                    
-#define FLASHLED 2        //GPIO2, when 2 HIGH turns on Red LED.  Use ~25mSec pulse to indicate new fb image.
-#define BLK0LED 33        //tried GPIO12 - DANGEERUS 12 MUST BE LOW on reset to correctly reset intenals for RAM 
-#define BLK1LED 33        // N.B. tried:  GPIO12 and stuffed a CAM -GPIO12 used to set flash programming voltage! 
-#define BLK2LED 33        //to use 33 (on-board LED) need to rework CAM to repurpose P_OUT pin(P1-4)(see Youtube)
-#define BLK3LED 33        //consider using 4 if can disable flash (remove resistor from CAM?)(but flash useful!)
-#define PLED    14        //assign a LED to be programmable. i.e. 'n' cmd assigns a bank status to the PLED
-#define QLED    32        //assign a LED to configurable bank NLED output
+       //    (tried to use 12, but rendered FLASH RAM unprogrammable!(stuffed #one CAM)
 #endif
+
+#include "camera_pins.h"  //for thinker, includes #define XCLK_GPIO_NUM 0
+
 #include <EEPROM.h>
 #define EEPROM_SIZE 320+8+80+80+80 //long pointers to image +reboot flag(int)(+threshold,nLED,min2flip,maxSensors?)
 #define EPvFlag      EEPROM_SIZE-80-80-80-8 //vFlag stored as (1byte)integer, others as byte
@@ -125,7 +156,8 @@ TwoWire MyWire = TwoWire(0);   //Create second i2c interface (don't use Wire1 = 
 bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false}; //show detail debug to USB output
 
 #define IFsc  if(scroll==true) //output progressive scroll data
-#define Spr  Serial.print     //shortens long print statements.
+#define Printf Serial.printf   //esp32S3 required global change of printf() to implement fast native USB connection
+#define Spr  Serial.print     //shortens long repetitive print statement lines.
 #define IF0  if(DEBUG[0])     //Higher priority debug
 #define IFT  if(DEBUG[1])     //Debug control of timing output
 #define IFD  if(DEBUG[2])     //Lower priority Debug control
@@ -143,20 +175,20 @@ bool    DEBUG[11]={false,false,false,false,false,false,false,false,false,false};
 #ifndef NLED                  //define NLED in config.h to select a BLK for QLED indicator pin 
 #define NLED 0                //default 0 maintains consistency with earlier versions
 #endif
-
+#include "esp_partition.h"
 
 /*  sensorCAM commands:
 a%%   Activate/enAble sensor[%%] refresh Sensor_ref[%%], cRatios etc. from S[%%] image (48 bytes) in latest frame.
 a%%,rrr,xxx  *Set coordinates of Sensor[%%] to row/col: rrr/xxx AND activate and auto ref.   Verify with p$ cmd.    
-b%[#]   bank % sensors. Show which sensors OCCUPIED(1) (in bits 7-0) [brightSF=# ('h'shows #)] <Request $+1 bytes>  
-c$$$$  *reCalibrate camera CCD occasionally and grab new references for all enabled sensors. (Beware of doing this
-        while any sensors are occupied!  Obstructed sensors will later need an r%%   Check all bank LEDS are off 
-        AND check all sensors are unoccupied before recalibrate.  Can set BRI CON SAT AWB through c$$$$ e.g. c0120
-        Can change default setting for AWBg,AEC,AECd,AEL,AGC,AGg with six extras: c$$$$1111119. c$$$$ resets them!
-d%%[#] *Difference score in colour & brightness between Ref  & actual image. Show # grabs.  <Request 4 data bytes>
+b%[#]  bank % sensors. Show which sensors OCCUPIED(1) (in bits 7-0) [brightSF=# ('h'shows #)] <Request $+1 bytes>  
+c$$$#  *reCalibrate camera CCD occasionally and grab new references for all enabled sensors. (Beware of doing this
+       while any sensors are occupied!  Obstructed sensors will later need an r%%   Check all bank LEDS are off 
+       AND check all sensors are unoccupied before recalibrate.  Can set BRI CON SAT AWB through c$$$# e.g. c0120
+       Can change default setting for AWBg,AEC,AECd,AEL,AGC,AGg with six extras: c$$$1111119. c$$$$ resets them!
+d%%[,#] *Difference score in colour & brightness between Ref & actual image. Show # grabs. d<Request 4 data bytes>
 e    *EPROM save of any new Sensor offset positions & 4 parameters.    Warning: May only work once per reset
 f%%  *Frame buffer sample display. Prints latest binary image of SensorRef[%%] & Sensor[%%]  <Requests 4x28 bytes>
-g    *Get Camera Status. Displays most current settings available in webcam window.  (also works in video mode)
+g[#] *Get Camera Status. Displays most current settings available in webcam window.  (g1 g2 grid on, g0 grid off)
 h$    Help(debug)output -  h to turn OFF, h0 turns ON detailed USB output. h1:more; h2:timing; h3:i2c; h4:Noise
 i%%  *Individual sensor %% Information. Optional i%%,$$ sets Twin sensor[$$] for S%%.  <i2c Request 10 data bytes>
 j$#   adJust camera setting $ to value # and display most settings (as for ‘g’) ‘j’ does NOT get new refs. - use r  
@@ -175,8 +207,8 @@ s%%  *Scan for new location for sensor %% (00-97). If found, records location in
         record a new reference image (also computes colour ratios & brightness) The location must be unoccupied!
 t##[,%%] Threshold level being used. show/set for Sensors (## sets 32-98)[for S%%] t1 toggle scrolling  <32 bytes>
 u%%  *Un-define/remove sensor %% by setting INACTIVE & Sensor[%%]=0. u99 erases ALL. Needs ‘e’ to erase from EPROM
-v[1|2] *Video mode. Reboot CAM in webserver mode. [v2” will connect to 2nd (alt.) router ssid] ('v' gives version)
-w    *Wait for new command line (\n) before resuming loop().   (handy to stop display data scrolling)
+v[1|2] *Video mode. Reboot CAM in webserver mode ['v2' will connect to 2nd (alt.) router ssid] ('v' gives version)
+w    *Wait for new command line (\n) before resuming loop().   (handy to stop/freeze display data scrolling)
 x###  Presets column for start of Processing image transfer (0-318)
 y###  Suspend imaging. Proceeds to write header & Zlength row### pixels to USB port for Processing4. 'yy' resumes
 yy    Used exclusively to end a series of 'y' commands (that suspended imaging) and returns CAM to run mode.
@@ -190,13 +222,13 @@ F|R  *Reset commands – will Reset CAM and initiate the Sensor mode.  Both will
 */
 unsigned long int starttime=0;          //counter giving each start time in uSec.
 int E6counter=200;  //E6 EXIOexpander cmd occurs at 100/sec.  stop E4 debug output after #
-
+const int SAT = 5;                      //a tolerance on pixel saturation below (3E+3F+3E)
 byte analoguePinMap[] = {12,13,14,15,16,17};       //default pin map for uno & nano  vpin=firstVpin+Map[i]?
 byte EXCScmd0=0;      //last EXCS cmd
 bool EXCScmd=false;   //true if last i2c cmd from EX
 int firstVpin=0;      //to be set by EX-CS EXIOINIT function
 int Bri=0, Con=1, Sat=2, AWB=1, AWBg=1, AEC=1, AECd=1, AEL=1, AGC=1, AGg=9;   //initial settings of 'c' variables
-int AWB9=1, AGC9=1;                         //after prefillRef delay (9sec) change AWB and AGC if desired
+int AWB9=1, AGC9=1, AEL9=0, AGg9=5;            //after prefillRef delay (9sec) changes settings if desired
 //   arguments for 'c' command; Bri Con Sat AWB AWBg AEC AECd AEL AGC AGg (NO SPACES!)
 int dbug=10;
 char OCc = '#';       //OCc character to indicate OCCUPIED in scrolling status line. @12 good for Arduino IDE
@@ -282,6 +314,7 @@ char Yheader[10]="y_x_z_ck:";
 bool SendYpacket=false;
 char i2cData[64];       //array of sensor status data to send on 't' request
 bool scroll=true;       //if false suppress scrolling output (use 't0')
+int  grid=0;            //grid on if =1
 int  tcounter=0;        //down counter for delayed scroll "off"
 int  i2cDatai=0;        //array index
 
@@ -315,15 +348,33 @@ void startCameraServer();      //cameraInit() seems to initiate TwoWire(1) for C
 
   // *********************************************************************
 
-void setup() {   
-    Serial.begin(BAUD);   //downloads with 115200+. Note: Mega still using 9600 for more reliable visual basic!
-     Serial.setDebugOutput(true);
-    Serial.println();
-     printf("\nHello\nBCD version No %d\n",BCDver);          //my software version
-     printf("Total heap: %d\n", ESP.getHeapSize());   //356488  //BCD: added from esp32-how-to-use-psram  
-     printf("Free heap: %d\n", ESP.getFreeHeap());    //331728  //set Arduino IDE Core Debug Level: "Verbose"
-     printf("Total PSRAM: %d\n", ESP.getPsramSize()); //4192139 //should output to SerialMonitor
-     printf("Free PSRAM: %d\n", ESP.getFreePsram());  //4.192139 for 4MB PSRAM
+void setup() {
+	
+#if CONFIG_IDF_TARGET_ESP32S3   // ESP32-S3 native USB-CDC
+  pinMode(FLASHLED, OUTPUT);
+  digitalWrite(FLASHLED, HIGH);
+  delay(500);
+  digitalWrite(FLASHLED, LOW);
+  Serial.begin(BAUD);
+  delay(1000);
+  digitalWrite(FLASHLED, HIGH); // leave it on 
+#else                           // Classic ESP32-CAM UART0
+  Serial.begin(BAUD, SERIAL_8N1, 3, 1);
+#endif
+
+  delay(50);
+  Serial.print("core sdk version: ");
+  Serial.println(ESP.getSdkVersion());
+  if(strncmp(ESP.getSdkVersion(), "v4.4.7", 6) == 0) 
+       Serial.print("esp32 Espressif 2.0.17");
+  else Serial.print("esp32 Espressif 3.3.x");
+
+  Serial.println();
+  Printf("\nHello\nBCD version No %d\n", BCDver);
+     Printf("Total heap: %d\n", int(ESP.getHeapSize()));   //356488  //BCD: added from esp32-how-to-use-psram  
+     Printf("Free heap: %d\n", int(ESP.getFreeHeap()));    //331728  //set Arduino IDE Core Debug Level: "Verbose"
+     Printf("Total PSRAM: %d\n", int(ESP.getPsramSize())); //4192139 //should output to SerialMonitor
+     Printf("Free PSRAM: %d\n", int(ESP.getFreePsram()));  //4.192139 for 4MB PSRAM
 
   for (i=0;i<(80*16*3);i++){Sensor666[i]=10; Sensor_ref[i]=10;} //ensure none remain at 0 or risk /0 reboot
   for (i=0;i<(80*12);i++)   SensorRefRatio[i]=1;                      
@@ -354,7 +405,7 @@ void setup() {
     delay(500);                 //just copying an EPROM example (why?)
     i=int(EEPROM.read(EPvFlag));   //if 1-2 initiate web server via wifi 
     if(i==2){ssid=ssid2; password=password2;}
-    printf("Video flag read as %d; Webpin %d\n",i,(1-digitalRead(WEBPIN)));
+    Printf("Video flag read as %d; Webpin %d\n",i,(1-digitalRead(WEBPIN)));
     if(i==0){    //EPROM contains data so use stored parameters - restore threshold,nLED,min2flip,maxSensors
       nLED=int(EEPROM.read(EPnLED));
       if (nLED>9) nLED=2;                        //set a default if new EEPROM
@@ -366,7 +417,7 @@ void setup() {
       if(min2flip>9 || min2flip==0) min2flip=2;     //checks for unprogrammed EPROM
       maxSensors=int(EEPROM.read(EPmaxSensors));    //debug print limit
       if(maxSensors>80) maxSensors=80;
-      printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
+      Printf("EEPROM set threshold= %d; nLED= %d; min2flip= %d; maxSensors= 0%o\n",\
               threshold,nLED,min2flip,maxSensors);
     }
     for (j=0;j<80;j++) SensorTwin[j]=0;     //initialise Twins, if none in eprom.
@@ -377,11 +428,11 @@ void setup() {
         // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
         //                      for larger pre-allocated frame buffer.
       if(psramFound()){
-        config.frame_size = FRAMESIZE_QVGA;   //QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
+        config.frame_size = FRAMESIZE_QVGA; //QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
         config.jpeg_quality = 10;           //0-63 0 for highest quality?
         config.fb_count = 2;
         IFD Spr("fb_count set to 2 as PSRAM found\n"); 
-      } else {                         //setup webserver mode        
+      } else {                              //setup webserver mode        
         config.frame_size = FRAMESIZE_QVGA; //select optimum size 640 x 480 for Sensor (speed v resolution)
         config.jpeg_quality = 12;           //4 better quality BUT slows any conversion to BMP by ~10%
         config.fb_count = 1;                //investigate speed gain using 327kB fast dynamic RAM. for a 154k fb  
@@ -416,11 +467,12 @@ void setup() {
         config.fb_count = 1;
       }
     }  //end of else{ MyWebServer=true; 
-
-      printf("Camera init attempt...\n");
+    
+      Printf("configured for type ov2640 CAM on esp32 type %d board\n", CAMERA_MODEL);
+      Printf("Camera init attempt...\n");
       esp_err_t err = esp_camera_init(&config);    // camera init
       if (err != ESP_OK) {
-        printf("Camera init failed with error 0x%x", err);
+        Printf("Camera init failed with error 0x%x", err);
         delay(10000);
         ESP.restart();
       }
@@ -428,17 +480,18 @@ void setup() {
       MyWire.onReceive(i2cReceive);                //set up response to receive & request
       MyWire.onRequest(i2cRequest);                //links to void i2cRequest()
 bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave needs no FREQ - Master's choice
-      if(MyWireOK) printf("MyWire.begin()INITIAISED OK\n");
-      else printf("MyWire.begin()FAILED\n");
+      MyWire.setClock(I2C_FREQ);                      //AI recommendation for S3 MPU
+      if(MyWireOK) Printf("MyWire.begin()INITIAISED OK\n");
+      else Printf("MyWire.begin()FAILED\n");
 
 #if CONFIG_IDF_TARGET_ESP32                           //ESP32 needs a call to slaveWrite for Arduino compatibility
       uint32_t i2cCtr = 0;          //prepare for i2c 
-      IFT printf("Doing slaveWrite() for ESP32\n");   //ESP32-S2 and ESP32-C3 don't need slaveWrite()
+      IFT Printf("Doing slaveWrite() for ESP32\n");   //ESP32-S2 and ESP32-C3 don't need slaveWrite()
       char message[64];                               
-      snprintf(message, 64, "E%u Packets.", i2cCtr++);//snprintf() puts the text "1 Packets" into char message[64]
+      snprintf(message, 64, "E%lu Packets.", (unsigned long)i2cCtr++);//snprintf() puts the text "1 Packets" into char message[64]
       message[0]=CAMERR;
       MyWire.slaveWrite((uint8_t *)message, strlen(message)); //preload onRequest buffer
-      IFT printf("Done slaveWrite\n");
+      IFT Printf("Done slaveWrite\n");
 #endif                                                        
       delay(4000);
  
@@ -448,18 +501,18 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
 
       // drop down frame size for higher initial frame rate
     s->set_framesize(s, FRAMESIZE_QVGA);   //THIS IS THE FINAL SETTING 
-
+/*
 #if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
     s->set_vflip(s, 1);
     s->set_hmirror(s, 1);
 #endif
-
+*/
 /*                 //using CAMERA_FB_IN_DRAM got figures below CLEARLY ASSIGNING FB TO DRAM!
-//  printf("AFTER good camera_init and parameter setting & before WiFi.begin\n"); 
-//  printf("Total heap: %d\n", ESP.getHeapSize()); //356488->356212 BCD: added from esp32-how-to-use-psram  
-//  printf("Free heap: %d\n", ESP.getFreeHeap());  //331492->258348 set Arduino IDE Core Debug Level: "Verbose"
-//  printf("Total PSRAM: %d\n", ESP.getPsramSize());   //4192139 unchanged for DRAM. -> 4192127
-//  printf("Free PSRAM: %d\n", ESP.getFreePsram());    //4.192139 MB!(DRAM) &  4153727 (PSRAM)(38400 for QQVGA)
+//  Printf("AFTER good camera_init and parameter setting & before WiFi.begin\n"); 
+//  Printf("Total heap: %d\n", ESP.getHeapSize()); //356488->356212 BCD: added from esp32-how-to-use-psram  
+//  Printf("Free heap: %d\n", ESP.getFreeHeap());  //331492->258348 set Arduino IDE Core Debug Level: "Verbose"
+//  Printf("Total PSRAM: %d\n", ESP.getPsramSize());   //4192139 unchanged for DRAM. -> 4192127
+//  Printf("Free PSRAM: %d\n", ESP.getFreePsram());    //4.192139 MB!(DRAM) &  4153727 (PSRAM)(38400 for QQVGA)
 */      
     if(MyWebServer){        //set up WiFi connection                   
           //if WEBPIN held LOW at startup, MyWebServer=true so startup in MyWebServer mode
@@ -498,21 +551,21 @@ bool  MyWireOK=MyWire.begin((uint8_t)I2C_DEV_ADDR,I2C_SDA2,I2C_SCL2,0);  //Slave
         if (SensorTwin[i]>79)  SensorTwin[i]=0;          // 153600L = size of image  
 																										
 													  
-        if (Sensor[i]!=0){  IFT printf("define Sensor[0x%x]= %lu \n",i,Sensor[i]);        
+        if (Sensor[i]!=0){  IFT Printf("define Sensor[0x%x]= %lu \n",i,Sensor[i]);        
           SensorActive[i]=true;               //initially activate all sensors defined (i.e. >0) in EPROM
           SensorActiveBlk[i>>3]=SensorActiveBlk[i>>3] | mask[i&0x07]; 
         }    //Never obstruct Sensor[00].  If brightness SensorStat[00] ever goes true, we have a lighting problem
       }      //Note: if sensor[0]=0 (top left cell undefined) cmd 'r' will ignore it!
 																												  
       delay(5000);                           //give the cam settings time to settle then renew
-      Spr("Turn AWB & AGC OFF(0) after 5 sec. Leave auto adjustments (AWBg,AEC,AECd,AEL) ON(1)\n");
+      Spr("reduce AEL & AGgain after 5 sec. Leave auto adjustments (AWB AWBg,AEC,AECd) ON(1)\n");
         //set AWB,AEC,AGC OFF,  or just AWB & CB OFF?? NEEDS MORE EXPERIMENTING
 
       new_camera_settings(Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,AGg);    //set Sat,AWB,AEC,AGC,.. to defaults
-      AWB=AWB9; AGC=AGC9;    //Ready for Turn Off AFTER prefillRef delay, say 9000mSec.
+      AWB=AWB9; AGC=AGC9; AEL=AEL9; AGg=AGg9;    //Ready for Turn Off AFTER prefillRef delay, say 9000mSec.
         //  new_camera_settings(0,1,2,0,1,1,1,1,0,9);  after prefill delay 
-      printf("\n*** WILL WAIT >10 SECONDS THEN AUTOMATICALLY LOAD ACTIVE SENSOR IMAGE REFERENCES\n");
-      printf("        ASSUMING ALL SENSORS UNOCCUPIED ***\n");
+      Printf("\n*** WILL WAIT >10 SECONDS THEN AUTOMATICALLY LOAD ACTIVE SENSOR IMAGE REFERENCES\n");
+      Printf("        ASSUMING ALL SENSORS UNOCCUPIED ***\n");
 
       cFlag=millis();     //record end of setup() time - used to determine when prefillRef happens
     }			   
@@ -579,7 +632,7 @@ void loop() {
 /***/    Spr(" fb_get time:"); Serial.println(timer);   //zStr); 
 /***/ } 
     fbheight=fb->height;
-/***/ IF0 printf(" got RGB565 frame. fbheight %d fb->len %d\n",fbheight,fb->len); 
+/***/ IF0 Printf(" got RGB565 frame. fbheight %d fb->len %d\n",fbheight,fb->len); 
  
 // ****DECODE RGB565 FRAME INTO COMPACT SENSOR FRAME OF RGB666 FORMAT
 /***/ IFT  timer=micros();    
@@ -589,14 +642,15 @@ void loop() {
 /***/ IFT{ timer=micros()-timer; Spr("Decode (uS):"); Serial.println(timer);}
      
       if (!converted) {Spr("Conversion to rgb666 failed\n"); return;}
-/***/ IFD printf("should now be rgb666 in Sensor666[]\n");      
+/***/ IFD Printf("should now be rgb666 in Sensor666[]\n");      
 
 // ****SEE IF IMAGE DUMP (TO PROCESSING4)CALLED FOR & DUMP AS REQUESTED BEFORE NEW FRAME INITIATED
       if(Yhold) cmdCount=0;      //reset command string index & prepare for a new command following recent y#
       while(Yhold){   //do not proceed with loop() until Yhold cleared by "yy\n" command
         if(SendYpacket){
           imageFB = fb->buf;     //set a ptr to start of image buf
-          if(boxSensors){        //put a box around active sensors in image   
+          if(boxSensors){        //add a grid and put a box around active sensors in image
+            drawgrid(grid); 
             for (int sen=0; sen<maxSensors; sen++) {        //limit to first maxSensors
               if (SensorActive[sen]) boxIt(Sensor[sen],sen);    //box 4x4 sensor at Sensor[] location              
             }
@@ -614,9 +668,9 @@ uint32_t  Ycksum=0;              //Calculate checksum
           }
           Yheader[6]=byte(Ycksum & 0x00FF); Yheader[7]=byte(Ycksum >>8);
           i=Serial.write(Yheader,9);                    //write 9 header bytes
-          if(i != 9) printf("Y header write error %d\n",i);
+          if(i != 9) Printf("Y header write error %d\n",i);
           i=Serial.write(&imageFB[j],Zlength*2);        //write data
-          if(i != Zlength*2) printf("Y data write error %d\n",i);
+          if(i != Zlength*2) Printf("Y data write error %d\n",i);
           SendYpacket=false;    
         }
 
@@ -628,7 +682,7 @@ uint32_t  Ycksum=0;              //Calculate checksum
           if (cmdChar == '\n'){                   //don't process cmdString until get LF (\n)
  
             nParam=parz(cmdString,p);
-/***/       IF5 printf(("parz %d parameters; p[0] %c %d %d %d %d \n"),nParam, byte(p[0]),p[1],p[2],p[3],p[4]);            
+/***/       IF5 Printf(("parz %d parameters; p[0] %c %d %d %d %d \n"),nParam, byte(p[0]),p[1],p[2],p[3],p[4]);            
             processCmd(imagePtr,pitch,Sensor,nParam,p);  //process command line            
             cmdCount=0;      //reset command string index 
           }     
@@ -643,11 +697,11 @@ uint32_t  Ycksum=0;              //Calculate checksum
         if(sScanCount==0){ 
           bright_spot = scan( imagePtr, pitch,fb->width, fbheight, RGB565p); //check imageData for a bright spot
           Sensor[sScan] = bright_spot - long(2 * RGB565p + 2 * pitch);      //point to first byte top left corner             
-          printf("Scan: New Sensor %d/%d(%d) bright pixel position: row=%d column(x)=%d offset %lu\n",
+          Printf("Scan: New Sensor %d/%d(%d) bright pixel position: row=%d column(x)=%d offset %lu\n",
                              sScan>>3,sScan&7,sScan,int(bright_spot/pitch),int(bright_spot%pitch)/2,bright_spot);
-          printf(" YOU MUST DO an r%d%d TO RECORD NEW IMAGE REFERENCE DATA *AFTER* removing brightspot and "
+          Printf(" YOU MUST DO an r%d%d TO RECORD NEW IMAGE REFERENCE DATA *AFTER* removing brightspot and "
                                                                      "restoring light level.\n",sScan/8,sScan%8);
-          printf(" Press Enter for fresh frames (DO NOT DO r%%%% here)\n");
+          Printf(" Press Enter for fresh frames (DO NOT DO r%%%% here)\n");
           sScan=-1; // clear request.  //NOTE: printed pixel pos'n is the bright_spot NOT the Sensor corner pos'n 
           wait();                      //  (sensor corner reduced by 2*pitch+4)
         }
@@ -699,7 +753,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
      rollNsR=rollNsR+sumR-rollNsFrameR[frameNo]; rollNsFrameR[frameNo]=sumR; r00NsR=rollNsR>>6;  //calculate rolling average noise on Sensor[00]
      rollNsG=rollNsG+sumG-rollNsFrameG[frameNo]; rollNsFrameG[frameNo]=sumG; r00NsG=rollNsG>>6;  //divide by 64.
      rollNsB=rollNsB+sumB-rollNsFrameB[frameNo]; rollNsFrameB[frameNo]=sumB; r00NsB=rollNsB>>6;  //16 for av/pixel
-     IFN printf("s00 roll'n brAv=%d, noisAv=%d %d %d s",r00Av,r00NsR,r00NsG,r00NsB);  //SHOULD THESE BE /16 as 16 pixels in every r00Ns%
+     IFN Printf("s00 roll'n brAv=%d, noisAv=%d %d %d s",r00Av,r00NsR,r00NsG,r00NsB);  //SHOULD THESE BE /16 as 16 pixels in every r00Ns%
 
 // ****FOR FLUORESCENT LIGHTING TRY TO SYNCHRONISE release/start image WITH 50Hz MAINS USING INTERNAL CLOCK
 // ****DELAY TO REDUCE FRAMES PER SECOND FROM one/80mS to one/100mSec FOR PSRAM 25% IDLE (DE-STRESS) TIME. 
@@ -735,31 +789,30 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
     // LOOP UNTIL prefillRef frames acquired at which time S666init_SensorRefs(prefillRef) will load ref. images.
     if(prefillRef>0){           //at start of program there is time to kill before ref.images are auto grabbed 
 /***/   if (prefillRef>1) {     //during initial countdown, output some debug images to see changes (if obvious)       
-/***/     IF0 for (i=0;i<3;i++){ printf("Sensor_ref[]:");                     //print out first 3 SensorRefs
-/***/         for (int j=0;j<48;j++) printf(" %x",Sensor_ref[i*48+j]); printf("\n");
+/***/     IF0 for (i=0;i<3;i++){ Printf("Sensor_ref[]:");                     //print out first 3 SensorRefs
+/***/         for (int j=0;j<48;j++) Printf(" %x",Sensor_ref[i*48+j]); Printf("\n");
 /***/     } 
-/***/     IF0 printf("Quad: %u %u %u %u quad[4]:%u\n",quad[0],quad[1],quad[2],quad[3],quad[4]);                                             
+/***/     IF0 Printf("Quad: %u %u %u %u quad[4]:%u\n",quad[0],quad[1],quad[2],quad[3],quad[4]);                                             
 /***/   }    
 /***/   IFD for (int i=0;i<3;i++){     //print Cratios for first 3 sensors
-/***/        printf("\nbsNo %d SensorRatios: ",i); for (int j=0;j<4;j++)printf(" %3d %3d %3d :",\
+/***/        Printf("\nbsNo %d SensorRatios: ",i); for (int j=0;j<4;j++)Printf(" %3d %3d %3d :",\
 /***/                           SensorRefRatio[i*12+j*3],SensorRefRatio[i*12+j*3+1],SensorRefRatio[i*12+j*3+2] );
-/***/   } printf("\n");    
+/***/   } Printf("\n");    
     }else{                           // DO NORMAL LOOP COMPARISON
       i2cDatai=1;                    //index for i2c message data entry - leave [0] for 't'
       avOddFrame=!avOddFrame;        //flip flag for av2frames() execution
       for(bsn=0;bsn<80;bsn++){ if(bsn==1)timer=micros(); //leave bsn==0 out of timing to see effect.
-        if (SensorActive[bsn]){     //skip compare if Sensor NOT active! (inactive sensors can't  
-                                    //                    auto update/track brightness drift (& saves time))
+        if (SensorActive[bsn]){     // inactive sensors can't auto update/track brightness drift (& saves time))
            // ****USE 2 image average for compare if bsNo < TWOIMAGE_MAXBS as a test for improved algorithm  
-          if (bsn < TWOIMAGE_MAXBS) av2frames(bsn);    //do 2xframe av. if active & bsNo < 2/0   & compare current S666 image
+          if (bsn < TWOIMAGE_MAXBS) av2frames(bsn);  //do 2xframe av. if active & bsNo < 2/0 & compare current S666 image
           maxDiff= compare( Sensor666, S666_row, long(bsn*S666_pitch), &SensorRefRatio[bsn*12], bsn, RGB565p); 
-          processDiff(bsn);    //make a decision on whether to set occupied or not and set status[bsn] accordingly
+          processDiff(bsn); //make a decision on whether to set occupied or not & set status[bsn] accordingly
               //processDiff recomputes bright & sets/resets all sensor status flags
-          if (bsn==dbsNo) {dMaxDiff=maxDiff; dBright=bright*brightSF;} //save for delivery on dflag or i2c request
+          if (bsn==dbsNo){dMaxDiff=maxDiff; dBright=bright*brightSF;} //save for delivery on dflag|i2c request
         }                        
         if(bsn==0){         //special treatment for brightness reference sensor[00]
 /***/     IFD {Spr("bsNo 0/0 maxDiff: ");Serial.println(maxDiff);}          
-          refBrightness=Sen_Brightness_Ref[0];   //a refBrightness from last time ALL references updated (startup, 'r00' or 'c' only)             
+          refBrightness=Sen_Brightness_Ref[0];  //from last time ALL references updated (startup, 'r00' or 'c' only)  
           refActual=quad[4];   //save refActual in case use later
 /***/     IFT { Spr(refBrightness);Spr(" refBrightness > actual ");Serial.println(refActual);}  //sensor[00]
           else IFsc if(minSensors==0){ Spr(" T");Spr(threshold);Spr(" N");Spr(nLED);Spr(" R");
@@ -781,7 +834,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
 // ****CHECK DFLAG AND OUTPUT REQUESTED INFO.  (BUG - doesn't look like it prints requested dbsNo DIFFERENCES only LAST active sensor leftover?)
         //if dFlag==0 just output diffs. if dFlag >0 output image table and repeat dFlag times
       if(dFlag>=0) {
-        printf("Diff: bsNo %d/%d diff %d bright %d diff+bright %d\n",dbsNo>>3,dbsNo&7,dMaxDiff,dBright,dMaxDiff+dBright);
+        Printf("Diff: bsNo %d/%d diff %d bright %d diff+bright %d\n",dbsNo>>3,dbsNo&7,dMaxDiff,dBright,dMaxDiff+dBright);
          // also need to send something to i2c - do this in i2cRequest() if last i2cReceive was 'd' 
         dFlag-=1;          //decrement towards -1 
         if(dFlag>=0){      //d%%n sets dFlag so can output debug sample images for bsNo '%%' on each of 'n' loops     
@@ -814,7 +867,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
 /***/ IFT {Spr("****************i2cCmd: ");Spr(i2cCmd);}
       if(cmdString[0]=='w') newi2cCmd=false;  //this ensures 'w' actually waits - other i2c commands DON'T WAIT
       nParam=parz(cmdString,p);     // parse ascii cmd
-/***/ // printf(("parz - %d parameters; p[0-4]: %c %d %d %d %d bsN(p[1]): 0%o \n"),nParam, p[0],p[1],p[2],p[3],p[4],bsN(p[1]) );      
+/***/ // Printf(("parz - %d parameters; p[0-4]: %c %d %d %d %d bsN(p[1]): 0%o \n"),nParam, p[0],p[1],p[2],p[3],p[4],bsN(p[1]) );      
       processCmd(imagePtr,pitch,Sensor,nParam,p);      //process command line
       if(cmdString[0]!='w') newi2cCmd=false;  //if() lets newi2cCmd cancel 'w' without being discarded itself.
     }
@@ -829,7 +882,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
         
         nParam=parz(cmdString,p); 
         // parse ascii cmd
-/****/  //IF5 printf(("parz: %d parameters; p[0-4]: %c %d %d %d %d bsN(p[1]): 0%o \n"),nParam,p[0],p[1],p[2],p[3],p[4],bsN(p[1]));
+/****/  //IF5 Printf(("parz: %d parameters; p[0-4]: %c %d %d %d %d bsN(p[1]): 0%o \n"),nParam,p[0],p[1],p[2],p[3],p[4],bsN(p[1]));
                    
         processCmd(imagePtr,pitch,Sensor,nParam,p);  //process command line 
         cmdCount=0;      //reset command string index 
@@ -850,7 +903,7 @@ int  sumR=0; int sumG=0; int sumB=0;        //calculate new bright(00) ( <= 48*6
         averageRbsn=0;            //set a flag for main loop to compute a multi-second average Reference and update _ref[0-79]
         averageRcounter=AVCOUNT;  //initiate down counter.  (10 per second)               
       }     //end of r00
-      printf("Ref: r00 refreshes ALL defined sensor references with new Cratios & brightness\n");         
+      Printf("Ref: r00 refreshes ALL defined sensor references with new Cratios & brightness\n");         
       refBrightness=0;                      //recalculate a refBrightness from Sensor_ref - perhaps should ONLY do when r00 is executed not whenever ref(00) updated
       for(int i=0;i<S666_pitch;i++) refBrightness+=int(Sensor_ref[i]);    //sum S666_pitch pixlets for 6x6 Sensor[0] max 6804r02        
 }   // ***************************** 
@@ -872,58 +925,66 @@ int bsn=0;
     if(nParam > 0) 
      switch(p[0]) { 
       case 'a':{      //a%%;  enAble Sensor[bsn] and get fresh reference (only do if UNOCCUPIED!)
+        if (p[1] == 99){   //enable/activate all defined sensors 
+          Spr("(a99) turn on/enable all defined sensors\n");
+          for (bsn=0;bsn<80;bsn++)
+            if( Sensor[bsn] != 0L){ 
+              SensorActive[bsn]=true;
+              SensorActiveBlk[bsn>>3] |= mask[bsn&0x07];            
+            } break;  
+        }
         absn = p[1];  //save decimal straight from parz() for later use
         bsn = bsN(p[1]);    // (can't produce out of range bsn - defaults to 00)       
-        if(nParam==1) { printf("(a%%%%[,rrr,xxx]) enAble Sensor(%%%%)[& sets new coordinates for it]\n"); break; }
+        if(nParam==1) { Printf("(a%%%%[,rrr,xxx]) enAble Sensor(%%%%)[& set new coordinates for S%%]\n"); break; }
         if(nParam==4) {
           int rowVal=p[2];
-          if(rowVal<0 || rowVal>235) {printf("invalid rowValue\n"); break;} 
+          if(rowVal<0 || rowVal>235) {Printf("invalid rowValue\n"); break;} 
           int xVal=p[3];          
-          if(xVal<0 || xVal>319) {printf("invalid xValue\n"); break;}
+          if(xVal<0 || xVal>319) {Printf("invalid xValue\n"); break;}
           pvtThreshold[bsn]=255;   //new coordinates so cancel pvtThreshold. ('k' doesn't clear it)
           Sensor[bsn]=pitch*rowVal + 2*xVal; 
-          printf("(a%%%%[,rrr,xxx]) new coordinates. Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
+          Printf("(a%%%%[,rrr,xxx]) new coordinates. Sensor[%d/%d] to r:%d x:%d\n",bsn>>3,bsn&7,rowVal,xVal);                    
           aRefCtr=4;        //get # fresh frames then take ref for sensor[aRef]
           wait();
         }      
-        if (bsn>=0) { printf("(a%%%%) enAble: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);         
+        if (bsn>=0) { Printf("(a%%%%) enAble: sensor %d/%d with fresh reference - bsNo 0%o\n",bsn>>3,bsn&7,bsn);         
           SensorActive[bsn]=true;              //set active and grab new ref
           SensorActiveBlk[bsn>>3] |= mask[bsn&0x07];
           grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],
                                                                 &Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12],&Sen_Brightness_Ref4[bsn]);
                                    //includes new Cratios & brightness                                                                
            //NOTE WELL: without new frames, any new reference won't be much use with new coordinates!
-/***/     printf("updated Sensor_ref[] \n");  //HEX bytes(0-5)(BGRBGR): %X %X %X %X %X %X \n",
+/***/     Printf("updated Sensor_ref[] \n");  //HEX bytes(0-5)(BGRBGR): %X %X %X %X %X %X \n",
         } break;
       }     
       case 'b':{ //b$; Block status byte output to host on USB (& i2c)  //b$# use # to change brightSF from 1 to 4     
         if (nParam<2){
-          Serial.print("(b$#) Bank/BrightSF: parameters not found - brightSF(#): "); Serial.println(brightSF);
+          Serial.print("(b$[#]) Bank/BrightSF: parameters not found - [brightSF="); Spr(brightSF);Spr("]\n");
         } 
          else {
             if(nParam==3){ brightSF=p[2];
-              Spr("(b$#) changing brightSF sensitivity to "); Serial.println(brightSF); 
+              Spr("(b$[#]) changing brightSF sensitivity # to "); Serial.println(brightSF); 
             }  
           b=p[1]%10;                //ignore any further text after b$
           if(!newi2cCmd){
-            Spr("(b$#)bank: ");Spr(b);Spr(" occupancy status byte: 0x");
+            Spr("(b$[#])bank: ");Spr(b);Spr(" occupancy status byte: 0x");
             Spr(SensorBlockStat[b],HEX);Spr(" (sensors 7-0) ");
             for (i=7;i>=0;i--) Spr((SensorBlockStat[b]>>i) & 0x01); Serial.println(' ');
           }         
           else IFI2C {for (i=7;i>=0;i--) Spr((SensorBlockStat[b]>>i) & 0x01); Serial.println(' '); }        
         } 
         break;  
-      }            //c$$$$#####; set $=1 to leave AWB AEC AGC & CB respectively. 
-      case 'c':{   //c$$$$; Calibrate: turn on/off Auto adjustments for 10seconds and reload all references!
-                   //6x % parameters are 1/0 for AWBg AEC AECd AEL AGC AGg respectively ( default to off(0) ) 
-                   //full list: arguments for 'c' command; Bri Con Sat AWB  AWBg AEC AECd AEL AGC AGg (NO SPACES!)
-        printf("(c$$$####$##) dangerous cam cmd! - USE CMD 'r00' after 15ses or just use 'j' ( $= _|-|0|1|2 )\n");  
+      }             
+      case 'c':{   //c$$$####$##; Calibrate: turn on/off Auto adjustments for 10seconds and reload all references!
+                   //# parameters are 1/0 for AWB AWBg AEC AECd AGC. ( final AGg #: 0-9 ) 
+                   //arguments for 'c' command, full list: Bri Con Sat AWB AWBg AEC AECd AEL AGC AGg (NO SPACES!)
+        Printf("(c$$$####$##) dangerous cam cmd! - USE CMD 'r00' after 15ses or just use a valid 'j' ( $= _|-|0|1|2 )\n");  
                  
         Bri=0; Con=1; Sat=2; AWB=1; AWBg=1; AEC=0; AECd=0; AEL=1; AGC=1; AGg=9;    //reset defaults
 
         if(cmdString[1]<0x20){ 
-         // printf("CALIBRATE CAM - syntax: c AWB AEC AGC CBar Bri Con Sat AGCgain AWBg  e.g. reset defaults: c01200129\n"); 
-          printf("Calibrate CAM syntax: c Bri Con Sat AWB AWBg AEC AECd AEL AGC AGgain defaults: c0121100119\n");
+         // Printf("CALIBRATE CAM - syntax: c AWB AEC AGC CBar Bri Con Sat AGCgain AWBg  e.g. reset defaults: c01200129\n"); 
+          Printf("Calibrate CAM syntax: c Bri Con Sat AWB AWBg AEC AECd AEL AGC AGgain defaults: c0121111015\n");
           wait();
           break;
         }
@@ -959,45 +1020,46 @@ int bsn=0;
         prefillRef=1;       //set to 1 should suppress normal loop data stream until end of stdCtimer
         getCAMstatus();     //also print in 'g' format
         Serial.println(" NOTE Calibration operation 'c' has NOT FULLY FOLLOWED THROUGH - assumes SensorStat[] & SensorBlockStat[] will automatically reset");
-        printf("After a new line, calibrate will take ~20 seconds to execute and refresh references\n");
+        Printf("After a new line, calibrate will take ~20 seconds to execute and refresh references\n");
         wait();
         stdCtimer=millis()+10000;        //start a timer - wait 10sec for adjustments to settle automatically then turn off AGC say 
         break;              //leaves flags set for main loop() to calibrate from fresh images.        
       }
       case 'd':{      //d%%,#; Differences between Sensor_ref[bsNo] and imagePtr. (optional n=No. of repetitions of image) (& i2c)         
         if(nParam==1) {   
-          printf("(d%%%%,#) Diff score for S%%%%. Optional repeat # times including frame samples \n ");
+          Printf("(d%%%%[,#]) Diff score for S%%%%. [repeat # times with frame samples] \n ");
           wait();
           break;
         }
         dFlag=0; //set a (+ve) flag for loop() to print out data after it gets a fresh image repeating if desired.
         if(nParam==3) dFlag=p[2];           
-        Spr("(d%%#) Diff: ");
+        Spr("(d%%[,#]) Diff: ");
         dbsNo = bsN(p[1]);   
         if (dbsNo>=0) {              
-          printf(" difference score for Sensor[0%o], use %d consecutive images (remember pipelining!)\n",dbsNo,dFlag);
-          printf("will print data AFTER new line - follow with 'w' command to pause to read\n");
+          Printf("d%%%%[,#]) difference score for Sensor S0%o [use %d consecutive images] (remember pipelining!)\n",dbsNo,dFlag);
+          Printf("will print data AFTER new line - follow with 'w' command to pause to read\n");
         } else dFlag=-1;
         wait();      
-        break;        //leaves flag for loop() to complete print output.       
+        break;        //leaves dFlag for loop() to complete print output.       
       } 
       case 'e':{     //e;  EPROM burn any changes to Sensor[] & some other parameters
-        printf("(e) EPROM: Save latest threshold(%d), min2flip(%d), nLED(%d), minSensors(0%o), maxSensors(0%o), Sensor[] SensorTwin[] & pvtThreshold[] to EPROM\n"\
+        Printf("(e) EPROM: Save latest threshold(%d), min2flip(%d), nLED(%d), minSensors(0%o), maxSensors(0%o), Sensor[] SensorTwin[] & pvtThreshold[] to EPROM\n"\
                ,threshold,min2flip,nLED,minSensors,maxSensors);
         EEPROM.write(EPminSensors,byte(minSensors));
         EEPROM.write(EPnLED,byte(nLED));
         EEPROM.write(EPthreshold,byte(threshold));
         EEPROM.write(EPmin2flip,byte(min2flip));
         EEPROM.write(EPmaxSensors,byte(maxSensors));
-        printf("EPROM: Saving latest sensor pointers to EPROM with thresholds, nLED, min2flip, min & maxSensors\n");
+        Printf("EPROM: Saving latest sensor pointers to EPROM with thresholds, nLED, min2flip, min & maxSensors\n");
         for (i=0;i<80;i++) {            //put changed values for SensorTwin[] & Sensor[] in EEPROM
           EEPROM.writeLong(i*4,Sensor[i]);            
           EEPROM.write(EPSensorTwin+i,SensorTwin[i]);
           EEPROM.write(EPpvtThreshold+i,pvtThreshold[i]); 
           EEPROM.write(EPlineardX+i,lineardX[i]); 
-          delay(10);                    //added to avoid 'e' resets of Alive082 hw.
+          delay(10) ;                   //added to avoid 'e' resets of Alive082 hw.
         }
-        EEPROM.commit();                //ESP32 method
+        if (EEPROM.commit()) Serial.println(" Saved");                //ESP32 method
+        else Serial.println(" EEPROM failed");
         EEPROM.end();                   //burn eeprom   
         delay(500);   
         EEPROM.begin(EEPROM_SIZE);      //restart EEPROM for any further EEPROM commands (e.g. e or v).
@@ -1007,14 +1069,15 @@ int bsn=0;
       case 'f':{      //f%%;  Frame: image of bsNo sensor output to USB (if sensor[bsNo] undefined, will get no data)
         Spr("(f%%) ");
         bsn = bsN(p[1]);    
-        printf("Frame: Print fb ref & newest sample for S%o\n",bsn);
+        Printf("Frame: Print fb ref & newest sample for S%o  Brightness_Ref: R%d\n",bsn,Sen_Brightness_Ref[bsn]);
         if (bsn>=0) write_img_sample(Sensor666,S666_row,bsn*48,24);  //write current image of sensor[bsn] ref & new data         
         wait();
         break;
       }
       case 'g':{        //get OV2640 camera status and print it to USB
         getCAMstatus();
-        wait();
+        if(p[1]>=0) grid = p[1];  //drawgrid if p[1]==1 or 2
+        else wait();
         break; 
       }
       case 'j':{        //j$#;  Set one camera parameter($) directly to digit(#)  (5=-1,6=-2)
@@ -1037,24 +1100,24 @@ int bsn=0;
           if(p[1]==9) {      //(h9) de-activates all debug
                dbug=9;                  //deselect any dbug (0-9)
                for(c=0;c<9;c++) DEBUG[c]=false;
-               printf("turn off Help: DEBUG0(detail) off; DB1(timing) off; DB2(gen) off; DB3(i2c) off; DB4(noise) off; DB5 off; \n"); 
+               Printf("turn off Help: DEBUG0(detail) off; DB1(timing) off; DB2(gen) off; DB3(i2c) off; DB4(noise) off; DB5 off; \n"); 
           }
           if((p[1]>9) && (p[1]<99)){   //set a maxSensors bsn limit on sensor state printout          
                 maxSensors=bsN(p[1]);  
-                printf("(h%%%% Setting maxSensors to 0%o\n",maxSensors);
+                Printf("(h%%%% Setting maxSensors to 0%o\n",maxSensors);
           }  
         }else{    //just print info.
-              printf("(h$) set debug $ level ON.  (h9) turns off levels 0 to 8.  (h%%%%) sets maxSensors (010-097)\n");            
-              printf(" options: h0(detail) h1(timing) h2(gen) h3(i2c) h4(noise) h5(parz/IR) h7,#(wait on bank # trip) h8(CS cmds)\n"); 
-              printf("current help: ");     //if not h# or h9, print out current settings
-              if(DEBUG[0]==1)printf("DE0(detail) ON; ");
-              if(DEBUG[1]==1)printf("DB1(timing) ON; ");
-              if(DEBUG[2]==1)printf("DB2(gen) ON; ");
-              if(DEBUG[3]==1)printf("DB3(i2c) ON; ");
-              if(DEBUG[4]==1)printf("DB4(noise) ON; ");
-              if(DEBUG[5]==1)printf("DB5(parz/IR) ON; \n");
-              if(DEBUG[7]==1)printf("DBt ON; halt scroll on trip of bank %d \n",h7block);
-              printf(" dbug=%d, maxSensors: 0%o (brightSF:%d)\n",dbug,maxSensors,brightSF); 
+              Printf("(h$) set debug $ level ON.  (h9) turns off levels 0 to 8.  (h%%%%) sets maxSensors (010-097)\n");            
+              Printf(" options: h0(detail) h1(timing) h2(gen) h3(i2c) h4(noise) h5(parz/IR) h7,#(wait on bank # trip) h8(CS cmds)\n"); 
+              Printf("current help: ");     //if not h# or h9, print out current settings
+              if(DEBUG[0]==1)Printf("DE0(detail) ON; ");
+              if(DEBUG[1]==1)Printf("DB1(timing) ON; ");
+              if(DEBUG[2]==1)Printf("DB2(gen) ON; ");
+              if(DEBUG[3]==1)Printf("DB3(i2c) ON; ");
+              if(DEBUG[4]==1)Printf("DB4(noise) ON; ");
+              if(DEBUG[5]==1)Printf("DB5(parz/IR) ON; \n");
+              if(DEBUG[7]==1)Printf("DBt ON; halt scroll on trip of bank %d \n",h7block);
+              Printf(" dbug=%d, maxSensors: 0%o (brightSF:%d)\n",dbug,maxSensors,brightSF); 
               wait();                 //stops looping indefinitely until input a newline (\n)       
         }
         wait();
@@ -1062,44 +1125,44 @@ int bsn=0;
       }
       case 'i':{      //i%%;  Individual sensor status byte (1/0) sent to USB (& i2c)             
         if (nParam>1) bsn = bsN(p[1]); 
-        else { printf("(i%%%%) Info: No Individual sensor specified\n"); break;
+        else { Printf("(i%%%%[,$$]) Info: No Individual sensor specified [Twin]\n"); break;
         } 
         if (nParam==3) {
           j=bsN(p[2]);
           SensorTwin[bsn]=j;         //i%%,$$
-          printf("Setting SensorTwin[0%o",bsn);printf("] to sensor[0%o}\n",j);
+          Printf("Setting SensorTwin[0%o",bsn);Printf("] to sensor[0%o}\n",j);
         }
-        printf("(i%%%%,$$) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
-        if (SensorStat[bsn])printf("true/OCCUPIED    ");             
-          else              printf("false/unoccupied ");
-        printf(" r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
-        if (SensorTwin[bsn]!=0)printf("Twin: S%o ",SensorTwin[bsn]);
-        if (pvtThreshold[bsn]!=255){ printf("pvtThreshold= %d ",pvtThreshold[bsn]);
+        Printf("(i%%%%[,$$]) Info: Sensor %d/%d(%d) enabled:%d status:%d ",bsn>>3,bsn&7,bsn, SensorActive[bsn],SensorStat[bsn]);
+        if (SensorStat[bsn])Printf("true/OCCUPIED    ");             
+          else              Printf("false/unoccupied ");
+        Printf("r=%3d x=%3d ",int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));
+        if (SensorTwin[bsn]!=0)Printf("Twin: S%o ",SensorTwin[bsn]);
+        if (pvtThreshold[bsn]!=255){ Printf("pvtThreshold= %d ",pvtThreshold[bsn]);
           if(pvtThreshold[bsn]>=128){
             int lstepR= pvtThreshold[bsn]&0x7F;   //linear "vertical"  length (4 spots) 0-63
             int lstepX = lineardX[bsn];          //linear "horizontal" length (-64 to 63 pixels)
           //  if (lstepX>7) lstepX = -(lstepX&7); //negative step -> 2's comp.
-            printf("LINEAR steps: dR=%d dX=%d pixels",lstepR,lstepX);
+            Printf("LINEAR steps: dR=%d dX=%d pixels",lstepR,lstepX);
           }
         }
         b=0;
         for(j=0;j<48;j++) b += Sensor666[bsn*48+j];
-        printf(" brightness: A%d\n",b);
+        Printf(" brightness: A%d\n",b);
         wait();                     
         break;          
       }
      
       case 'k':{      //k%%,rrr,xxx  set coordinates for Sensor[%%] = pitch*r+2*x (for RGB565)
         bsn = bsN(p[1]);  
-        if(nParam!=4) { printf("(k%%%%,rrr,xxx)Koordinates: setup for Sensor%%%%\n"); break; }      //invalid bsNo
+        if(nParam!=4) { Printf("(k%%%%,rrr,xxx)Koordinates: setup for Sensor%%%%\n"); break; }      //invalid bsNo
         int rowVal=p[2];  
-        if( rowVal<0 || rowVal>239) printf("invalid rowValue\n");
+        if( rowVal<0 || rowVal>239) Printf("invalid rowValue\n");
         else {
           int xVal=p[3];     
-          if(xVal<0 || xVal>319) printf("invalid xValue\n");
+          if(xVal<0 || xVal>319) Printf("invalid xValue\n");
           else{ 
             Sensor[bsn]=pitch*rowVal + 2*xVal; 
-            printf("(k%%%%,rrr,xxx)setting new coordinates for Sensor %d/%d(%d) to r=%d x=%d\n",bsn>>3,bsn&7,bsn,rowVal,xVal);                    
+            Printf("(k%%%%,rrr,xxx)setting new coordinates for Sensor %d/%d(%d) to r=%d x=%d\n",bsn>>3,bsn&7,bsn,rowVal,xVal);                    
           }
         }
         wait();
@@ -1107,34 +1170,24 @@ int bsn=0;
       }     
       case 'l':{      //l%%;  (lima) set1: set bsNo OCCUPIED(1) & INACTIVE
         bsn = bsN(p[1]);     
-        if(bsn>=0){ printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn/pin %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+        if(bsn>=0){ Printf("(l%%%%)(Lima) set1: Sensor %d/%d (bsn/pin %d) set=1, OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
           SensorStat[bsn]=true; 
           SensorBlockStat[bsn>>3] |=  mask[bsn&7]; 
           SensorActive[bsn]=false;
           SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];           
-        }else printf("(l%%%%)(Lima) set1: Sensor %%%% latch state = 1, OCCUPIED & disabled\n");
+        }else Printf("(l%%%%)(Lima) set1: Sensor %%%% latch state = 1, OCCUPIED & disabled\n");
         break;
       }
-      case 'o':{      //o%%;  (oscar) set0: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
-        bsn = bsN(p[1]);      
-        if(bsn>=0){ printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn/pin %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
-          SensorStat[bsn]=false; 
-          SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
-          SensorActive[bsn]=false;
-          SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07]; 
-        }else  printf("(o%%%%)(Oscar)set0: Sensor[%%%%] latch state = 0, UN-OCCUPIED & disabled\n");
-        break;             
-      }
       case 'm':{      //m$;    Minimum: sequential frames to trigger Occupied status (default 2)
-                      //m$,%%; Optional set maxSensors to ## (decimal)
+                      //m$,%%; Optional set maxSensors to ## (decimal) m0,%% & m10,%% safe.
         if(nParam>1){   
-          if(p[1]>0 && p[1]<9) min2flip = p[1];       //only allow 1-8        
+          if(p[1]>0 && p[1]<=8) min2flip = p[1];       //only allow 1-8        
         }
         if (nParam > 2){  
-          if(p[2]>=100) minSensors=bsN(p[2]%100);   //fudge to let (m$,1%%) set minSensors - but can also use n$,%%
+          if(p[2]>=100) minSensors=bsN(p[2]%100);   //fudge to let (m$,1%%) set minSensors - but can also use n10,%%
           else if(bsN(p[2])>minSensors) maxSensors=bsN(p[2]);
         }
-        printf("(m$[,%%%%]) Min/Max: $ frames min2flip(trip) %d, maxSensors 0%o, minSensors 0%o, nLED %d, NLED %d, "
+        Printf("(m$[,%%%%]) Min/Max: $ frames min2flip(trip) %d, [maxSensors 0%o], minSensors 0%o, nLED %d, NLED %d, "
         "threshold %d, TWOIMAGE_MAXBS 0%o \n", min2flip, maxSensors, minSensors, nLED, NLED, threshold, TWOIMAGE_MAXBS);  
         wait();
         break;
@@ -1147,19 +1200,42 @@ int bsn=0;
         if (nParam > 2){ int minS=bsN(p[2]);
           if(minS < maxSensors) minSensors = minS; 
         }  
-        printf("(n$[,%%%%]) bank Number:%d assigned to programmable status LED (minSensors=0%o)\n",nLED,minSensors); 
+        Printf("(n$[,%%%%]) bank Number:%d assigned to programmable status PLED [minSensors=0%o]\n",nLED,minSensors); 
         wait();             
         break;  
+      }
+      case 'o':{      //o%%;  (oscar) set0: bsNo set to UN-OCCUPIED(0) & INACTIVE(0)
+        if(p[1] == 99){    //disable ALL sensors below minSensors (not S00) and above maxSensors-1
+          Spr("(o99) turn off/disable all sensors (>S00) outside range minSensors to maxSensors\n");
+          for(bsn=1;bsn < minSensors;bsn++) {         
+            SensorActive[bsn]=false;
+            SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];
+          }
+          for(bsn=maxSensors;bsn<80;bsn++) {
+            SensorActive[bsn]=false;
+            SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07];
+          } break;
+        }                      //end of 'o99' turn off   
+        if(p[1] < 98){         //zero one sensor and disable.
+          bsn = bsN(p[1]);     // don't allow latching S00 to 0  (l or l00 can still latch S00 high!)       
+          if(bsn>0){ Printf("(o%%%%)(Oscar)setO: Sensor %d/%d (bsn/pin %d) set=0, UN-OCCUPIED & disabled\n",bsn>>3,bsn&7,bsn);
+            SensorStat[bsn]=false; 
+            SensorBlockStat[bsn>>3] &= ~mask[bsn&0x07];
+            SensorActive[bsn]=false;
+            SensorActiveBlk[bsn>>3] &= ~mask[bsn&0x07]; 
+          }else  Printf("(o%%%%)(Oscar)set0: Sensor[%%%%] latch state = 0, UN-OCCUPIED & disabled\n");
+ 
+        } break;          
       }
       case 'p':{      //p#;  Print table of Sensor[] Position Pointers (banks 0 to # only)
         i=0; c=0; if(p[1]>9) p[1]=p[1]/10;
         if((p[1]<10) && (p[1]>=0)) b=p[1]; else b=3;  //default value       
-        printf("(p$) Position Pointers: TL corners for DEFINED Sensors to bank %d\n",b);
+        Printf("(p$) Position Pointers: TL corners for DEFINED Sensors to bank %d\n",b);
         for (i=i;i<=b;i++) {
-          printf("Bank %d;", i);
+          Printf("Bank %d;", i);
           for (int j=c;j<=7;j++)
-            if (Sensor[i*8+j]>0)printf(" s[%d]: r=%3d x=%3d",j,int(Sensor[i*8+j]/pitch),int((Sensor[i*8+j]%pitch)/2));              
-          printf("\n");
+            if (Sensor[i*8+j]>0)Printf(" s[%d]: r=%3d x=%3d",j,int(Sensor[i*8+j]/pitch),int((Sensor[i*8+j]%pitch)/2));              
+          Printf("\n");
         } 
         wait();
         break;
@@ -1181,7 +1257,7 @@ int bsn=0;
         break; 
       }
       case 'r':{      //(r%%[,0];  Refresh bsNo Reference in Sensor_ref[bsNo], Activate and may display img data
-        printf("(r%%%%[,0]) Refresh Reference: for sensor[%%%%]. (default r = r00 for all) (MUST BE UNOCCUPIED!)\n");
+        Printf("(r%%%%[,0]) Refresh Reference: for sensor[%%%%]. (default r = r00 for all) (MUST BE UNOCCUPIED!)\n");
         if(nParam==1) p[1]=0;       //r defaults to r00;
         bsn = bsN(p[1]);  
         if(p[2]==0) {               //requesting new ref's for block up to bsn
@@ -1194,11 +1270,11 @@ int bsn=0;
           if(Sensor[bsn]==0) { Spr("No action as Sensor(bsNo) undefined 0");Serial.println(bsn,OCT);break;}
           autoRefSuspended = true;                //Suspend auto RefReferesh() during 'r'
           if((bsn>0) && (Sensor[bsn]>0) ){ //if not 00 & defined, set enAble & refresh reference for 1 bsNo alone          
-            SensorActive[bsn]=true;//grab_ref() gets image from Sensor666[] and computes new cRatios & brightness
+            SensorActive[bsn]=true; //grab_ref() gets image from Sensor666[] and computes new cRatios & brightness
             SensorActiveBlk[bsn>>3] |= mask[bsn&7];
             grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch),&Sensor_ref[bsn*S666_pitch],&Sen_Brightness_Ref[bsn],&SensorRefRatio[bsn*12],&Sen_Brightness_Ref4[bsn]);  //includes new Cratios & brightness
-            printf("References: enable new Sensor_ref[%d/%d]; 1st 2 HEX rgb pixels[0-5]: %X %X %X  %X %X %X\n",bsn>>3,bsn&7,Sensor_ref[bsn*S666_pitch],Sensor_ref[bsn*S666_pitch+1],Sensor_ref[bsn*S666_pitch+2],Sensor_ref[bsn*S666_pitch+3],Sensor_ref[bsn*S666_pitch+4],Sensor_ref[bsn*S666_pitch+5]);
-            printf("full new ref[bsNo] from current frame only - average ref still to be calculated\n");
+            Printf("References: enable new Sensor_ref[%d/%d]; 1st 2 HEX rgb pixels[0-5]: %X %X %X  %X %X %X\n",bsn>>3,bsn&7,Sensor_ref[bsn*S666_pitch],Sensor_ref[bsn*S666_pitch+1],Sensor_ref[bsn*S666_pitch+2],Sensor_ref[bsn*S666_pitch+3],Sensor_ref[bsn*S666_pitch+4],Sensor_ref[bsn*S666_pitch+5]);
+            Printf("full new ref[bsNo] from current frame only - average ref still to be calculated\n");
 /***/       IFN write_img_sample(&Sensor666[bsn*48], S666_row, 0L, 12 );//print out ref & new img[bsNo] (1 frame)
             averageRbsn=bsn;        //set a flag for main loop to compute a multi-second (AVCOUNT=32) average Reference and update _ref[bsn]
             averageRcounter=AVCOUNT;//initiate down counter.  (10 per second)  If not 0, main loop will call averageRcalculation(averageRbsn,AVCOUNT);      
@@ -1216,13 +1292,13 @@ int bsn=0;
         break;
       }     
       case 't':{      //t_:  Set threshold 31 to 250 for sensor "trip", send value to USB (& i2c)
-        if(nParam==1) {printf("(t##[,%%%%]) Threshold: trip point set to %d \n", threshold); break;}
+        if(nParam==1) {Printf("(t##[,%%%%]) Threshold: trip point set to %d \n", threshold); break;}
         int param1 = p[1];    
         if(param1==00 && nParam==3) param1=98;   //t00,%% and t99,%% clears pvtThreshold[%%] 
-        if(p[1] == 99){ printf("(t99) list all pvtThresholds");
-          for(int i=0;i<=9;i++){ printf("\n Bank %d: ",i); 
-            for(int j=0;j<=7;j++) if(pvtThreshold[i*8+j]<128) printf("S%d%d:%d ",i,j,pvtThreshold[i*8+j]);
-          } printf(" \n"); 
+        if(p[1] == 99){ Printf("(t99) list all pvtThresholds");
+          for(int i=0;i<=9;i++){ Printf("\n Bank %d: ",i); 
+            for(int j=0;j<=7;j++) if(pvtThreshold[i*8+j]<128) Printf("S%d%d:%d ",i,j,pvtThreshold[i*8+j]);
+          } Printf(" \n"); 
           break;
         }                        
         if(param1 > 30) {                 //OK threshold
@@ -1230,7 +1306,7 @@ int bsn=0;
           if(nParam==3){ bsn=bsN(p[2]);  
             if(bsn >= 00) pvtThreshold[bsn]=byte(param1);   
             if(param1 == 98) {pvtThreshold[bsn]=255; param1=00;}      // clear pvtThreshold
-            printf("(t##,%%%%) setting pvtThreshold to %d for sensor S%o \n",param1,bsn);
+            Printf("(t##,%%%%) setting pvtThreshold to %d for sensor S%o \n",param1,bsn);
           }                    
           else threshold=param1;  // will be permanent only use 'e' command (along with sensor changes and nLED)
         }
@@ -1238,31 +1314,31 @@ int bsn=0;
           if(param1==1) {
             if(nParam==2){     //suppress scrolling data
               scroll=!scroll;  //use to hide scrolling status data.
-              if(scroll) printf("scroll ON\n"); else printf("scroll OFF\n");
+              if(scroll) Printf("scroll ON\n"); else Printf("scroll OFF\n");
             }
             if(nParam==3){     // (t1,%%) used to clear banks of pvtThresholds                      
               int firstS=00; int lastS=79;
               if(p[2] < 99) {firstS=(p[2]/10)*8; lastS=firstS+7;}    //just 1 bank
-              if(p[2] == 98){ printf("(t1,98) list pvtThresholds");
-                for(int i=0;i<=9;i++){ printf("\n Bank %d: ",i); 
-                  for(int j=0;j<=7;j++) if(pvtThreshold[i*8+j]<128) printf("S%d%d:%d ",i,j,pvtThreshold[i*8+j]);
-                } printf(" \n");
+              if(p[2] == 98){ Printf("(t1,98) list pvtThresholds");
+                for(int i=0;i<=9;i++){ Printf("\n Bank %d: ",i); 
+                  for(int j=0;j<=7;j++) if(pvtThreshold[i*8+j]<128) Printf("S%d%d:%d ",i,j,pvtThreshold[i*8+j]);
+                } Printf(" \n");
               }              
-              else{ printf("(t1,%d) Clearing bank of pvtThresholds\n",p[2]);
+              else{ Printf("(t1,%d) Clearing bank of pvtThresholds\n",p[2]);
                 for(int i=firstS;i<=lastS;i++) if(pvtThreshold[i]<128)pvtThreshold[i]=255;       // clear pvtThreshold
               }
             }
           }else {tcounter=param1+2;scroll=true; break;}     //start limited scroll looping
         }
-        if(tcounter<2) printf("(t##) Threshold: trip point set to %d \n", threshold);
+        if(tcounter<2) Printf("(t##) Threshold: trip point set to %d \n", threshold);
         wait();        
         break;
       }
       case 'u':{      //u%%; Undefine Sensor[%%] by setting pointer = 0
-        if((nParam==1)||(p[1]>98))  printf("(u%%%%) undefine(erase) sensor[%%%%]\n");      
+        if((nParam==1)||(p[1]>98))  Printf("(u%%%%) undefine(erase) sensor[%%%%]\n");      
         else{
           bsn=bsN(p[1]);    
-            printf("(u%%%%) Undefine: Undefining %d/%d  (bsn %d)\n",bsn/8,bsn&0x07,bsn);
+            Printf("(u%%%%) Undefine: Undefining %d/%d  (bsn %d)\n",bsn/8,bsn&0x07,bsn);
             Sensor[bsn]=0L;
             SensorActive[bsn]=false;  
             SensorActiveBlk[bsn>>3] &= ~mask[bsn&7];    
@@ -1270,7 +1346,7 @@ int bsn=0;
         }
         if(p[1]==99){       //u99 undefines ALL sensors
           for (int i=0;i<80;i++) {Sensor[i]=0;SensorActive[i]=0;SensorActiveBlk[i>>3]=0;SensorTwin[bsn]=0;}
-          printf("To clear Sensor pointers in EEPROM also, user should follow 'u99' with an 'e' cmd\n");
+          Printf("To clear Sensor pointers in EEPROM also, user should follow 'u99' with an 'e' cmd\n");
         }
         wait();            
         break;
@@ -1287,21 +1363,22 @@ int bsn=0;
         break;
       }
       case '^': {
-        printf("(^) CAM software version (BCDver): %d\n",BCDver); 
+        Printf("(^) CAM software version (BCDver): %d\n",BCDver); 
         wait(); 
         break;
       }
       case 'v':{      //v#;  reboot & select video webserver mode
-        if(FLASHLED==2)printf("CAMERA_MODEL_WROVER_KIT  ");
-        printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
+        if(CAMERA_MODEL==2)Printf("CAMERA_MODEL_WROVER_KIT  ");
+        if(CAMERA_MODEL==3)Printf("CAMERA_MODEL_ESP32-S3  ");
+        Printf("CAM:0x%x\n",I2C_DEV_ADDR); //"CAM:0x%x command: v p[1]: %d\n",I2C_DEV_ADDR,p[1]);               
         if((p[1]<1)||(p[1]>2)) {
           
-          printf("(v#) CAM software version (BCDver): %d.%d.%d\n",BCDver/1000,(BCDver/100)%10,BCDver%100);
+          Printf("(v#) CAM software version (BCDver): %d.%d.%d\n",BCDver/1000,(BCDver/100)%10,BCDver%100);
           wait(); break;
         }
         int wifi=p[1];     //identify requested wifi router (1 or 2)
-        printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
-        printf("Waiting - press 'Enter' to trigger reset\n");
+        Printf("(v[1|2])Video: About to restart CAM (in video(jpeg) mode for webserver via wifi %d.\n",wifi);
+        Printf("Waiting - press 'Enter' to trigger reset\n");
         while (!Serial.available() && !newi2cCmd) delay(10); //stops looping indefinitely until input a newline NL
           //need to set EPROM flag in eprom
           // should we do another EEPROM.begin in case EEPROM.end already done??
@@ -1322,14 +1399,14 @@ int bsn=0;
         break;        
       }
       case 'x': {      //set a starting column in image for USB transmission to monitor
-        printf("(x###) Xcolumn: current= %d ", Xcolumn);
+        Printf("(x###) Xcolumn: current= %d ", Xcolumn);
         if(nParam==2) Xcolumn=p[1] & -2;       //make even 
-        if(Xcolumn > 319){Xcolumn=0;printf("New val exceeds 320 -> default = 000\n");}
+        if(Xcolumn > 319){Xcolumn=0;Printf("New val exceeds 320 -> default = 000\n");}
         if(Xcolumn+Zlength>320) {
           Zlength=320-Xcolumn; 
-          printf("reset Zlength=%d ",Zlength);
+          Printf("reset Zlength=%d ",Zlength);
         }
-        printf("new Xcolumn for sample image= %d \n",Xcolumn);
+        Printf("new Xcolumn for sample image= %d \n",Xcolumn);
         
         wait();
         break;
@@ -1351,18 +1428,18 @@ int bsn=0;
         break;               //send immediately 
       }
       case 'z': {      //set a packet length for image transmission
-        printf("(z###) z: length of old packet = %d pixels. ", Zlength);
+        Printf("(z###) z: length of old packet = %d pixels. ", Zlength);
         if(nParam==2) Zlength=p[1] & -2;         //make even
         if((nParam==2)&&(Zlength<2)) Zlength=320;
         if(Zlength > 320){
           Zlength=80;
-          printf(" z### exceeds 320 -> default = 80\n");
+          Printf(" z### exceeds 320 -> default = 80\n");
         }
         if((Zlength+Xcolumn)>320) { 
           Zlength=320-Xcolumn;
-          printf("reset Zlength=%d ",Zlength);
+          Printf("reset Zlength=%d ",Zlength);
         }
-        printf("New Zlength for USB image: %d pixels\n",Zlength);
+        Printf("New Zlength for USB image: %d pixels\n",Zlength);
         wait();
         break;
       }
@@ -1371,36 +1448,36 @@ int bsn=0;
         int signX=1; int signR=1;  //step size of 2x and r pixels
         int bsn2; int rows=0; int dx=0; int show=1;
         bool newSen=true;
-        if(nParam==1) {printf("(\\%%%%[,dR,dX[,#])create linear sensor(s)"); break;}
+        if(nParam==1) {Printf("(\\%%%%[,dR,dX[,#])create linear sensor(s)"); break;}
         if(nParam==2) newSen=false;  
         if(nParam==3) {  //convert to 5 format
           if(p[0]=='/') p[0]='\\';      // '/' would reverse slope
           bsn=bsN(p[1]);                //get %% -Needs better check on range
           bsn2=bsN(p[2]);
-          if (bsn2<=bsn){ printf("second b/s must exceed first. 0%o",p[2]); break; }
+          if (bsn2<=bsn){ Printf("second b/s must exceed first. 0%o",p[2]); break; }
           signR = updn( bsn, bsn2, &rows, &dx);    //calculate dr and dx
-/***/ //    printf("sign:%d updn bsn:%d bsn2:%d rows:%d dx:%d",signR,bsn,bsn2,rows,dx );
+/***/ //    Printf("sign:%d updn bsn:%d bsn2:%d rows:%d dx:%d",signR,bsn,bsn2,rows,dx );
           p[2] = rows/(bsn2-bsn);       //max -ve rows of -63 acceptable
           p[3] = dx/(bsn2-bsn);      
           p[4] = (bsn2-bsn+1); 
           nParam=5;  
-          printf("\\ %d %d %d %d Sen: %ld %ld rows: %d\n",p[1],p[2],p[3],p[4],Sensor[bsn2],Sensor[bsn],rows);
+          Printf("\\ %d %d %d %d Sen: %ld %ld rows: %d\n",p[1],p[2],p[3],p[4],Sensor[bsn2],Sensor[bsn],rows);
         }      
         if(nParam==5) {} //limit steps    
-        if(nParam>=4)if((p[2]>63) || (p[3])>63) {printf("step out of range %d,%d \n",p[2],p[3]);return;} 
+        if(nParam>=4)if((p[2]>63) || (p[3])>63) {Printf("step out of range %d,%d \n",p[2],p[3]);return;} 
         if (p[0] == '/')signX = -1;    //reverse signX 
-        printf("(\\%%%%[,#,$]) linear sensor creation starting with S%%%%. use increments: #rows,$dx pixels\n");                                                                   
+        Printf("(\\%%%%[,#,$]) linear sensor creation starting with S%%%%. use increments: #rows,$dx pixels\n");                                                                   
         bsn=bsN(p[1]);                //if p[1]>99, get 00       
              
         for(i=0;i<(8-bsn%8);i++){     //do i sensors to end of bank 
           if(!newSen) {      //don't create sensors, calculate steps instead
-            if(Sensor[bsn+i+1]==0) {printf("Missing/undefined Sensor in bank. S%o\n",bsn+i+1); return;}
+            if(Sensor[bsn+i+1]==0) {Printf("Missing/undefined Sensor in bank. S%o\n",bsn+i+1); return;}
             signR = updn( bsn+i, bsn+i+1, &rows, &dx); 
-            if(signR<0)  {printf("sensor line not descending S%o\n",bsn+i); return;}
-            if(rows > 31){printf("row gap too big S%o\n",bsn+i); return;}
+            if(signR<0)  {Printf("sensor line not descending S%o\n",bsn+i); return;}
+            if(rows > 31){Printf("row gap too big S%o\n",bsn+i); return;}
             p[2] = rows;       //max -ve step is -63
             p[3] = dx;                 
-/***/       printf("(0%o) nParam:%d %c %d %d %d\n",bsn+i,nParam,p[0],(char)p[1],p[2],p[3]);      //  i=bsn%8;              
+/***/       Printf("(0%o) nParam:%d %c %d %d %d\n",bsn+i,nParam,p[0],(char)p[1],p[2],p[3]);      //  i=bsn%8;              
           }
           if(i==p[4]-1) newSen=false;     //stop when p[4] reached.
           if(!makeLinear(bsn+i,p[2],signX*p[3],newSen,signR)) return;     //abort on error
@@ -1410,38 +1487,38 @@ int bsn=0;
         }  
         if(nParam==2) show=bsn; 
         for(i=bsn;i<=show;i++){    //print out results for verification
-          printf("sensor S%o ",i);
-          printf(" r=%3d x=%3d ",int(Sensor[i]/pitch),int((Sensor[i]%pitch)/2));
-          if (SensorTwin[i]!=0)printf(" Twin = 0%o ",SensorTwin[i]);
-          if (pvtThreshold[i]!=255){ printf(" pvtThreshold= 128+%d deltaX= %d",pvtThreshold[i]&0x7F,lineardX[i]);		 
-          printf(" \n");
+          Printf("sensor S%o ",i);
+          Printf(" r=%3d x=%3d ",int(Sensor[i]/pitch),int((Sensor[i]%pitch)/2));
+          if (SensorTwin[i]!=0)Printf(" Twin = 0%o ",SensorTwin[i]);
+          if (pvtThreshold[i]!=255){ Printf(" pvtThreshold= 128+%d deltaX= %d",pvtThreshold[i]&0x7F,lineardX[i]);		 
+          Printf(" \n");
           }
         } 
-        printf("completed linear sensor\n");
+        Printf("completed linear sensor\n");
         wait();
         break;
       }
       case '@':{      //@##;  set OCc character to decimal ASCII value
         OCc=char(p[1] & 0x7F);   // DO NOT USE char(12) with PROCESSING4
         if(nParam==1) OCc='#';
-        printf("(@##) 'Occupied' indicator in tabulation set to ASCII 0x%x\n",OCc);
+        Printf("(@##) 'Occupied' indicator in tabulation set to ASCII 0x%x\n",OCc);
         break; 
       }
       case '&':{      //statistics
 		    int hsum=0;
-        printf("(&) print Histogram of Hi noise trips since last '&'.  i.e. in %d loops.\nbsNo\t",HistoLoops);
-        for (bsn=0;bsn<maxSensors;bsn++) if(SensorActive[bsn]) printf("%o\t",bsn); printf("SUM");
+        Printf("(&) print Histogram of Hi noise trips since last '&'.  i.e. in %d loops.\nbsNo\t",HistoLoops);
+        for (bsn=0;bsn<maxSensors;bsn++) if(SensorActive[bsn]) Printf("%o\t",bsn); Printf("SUM");
         for (i=1;i<5;i++) { 
-          printf("\n%d Hi\t",i); 
+          Printf("\n%d Hi\t",i); 
           for(bsn=0;bsn<maxSensors;bsn++) 
-            if(SensorActive[bsn]) {hsum+=SensorHisto[bsn*5+i]; printf("%d\t",SensorHisto[bsn*5+i]);} 
-          printf("=%d",hsum);
+            if(SensorActive[bsn]) {hsum+=SensorHisto[bsn*5+i]; Printf("%d\t",SensorHisto[bsn*5+i]);} 
+          Printf("=%d",hsum);
           hsum=0;
         }
-        printf("\nTRIP\t"); 
+        Printf("\nTRIP\t"); 
         for(bsn=0; bsn<maxSensors;bsn++) 
-          if(SensorActive[bsn]) {hsum+=SensorHisto[bsn*5+0];printf("%d\t",SensorHisto[bsn*5+0]);} 
-        printf("=%d\n",hsum);
+          if(SensorActive[bsn]) {hsum+=SensorHisto[bsn*5+0];Printf("%d\t",SensorHisto[bsn*5+0]);} 
+        Printf("=%d\n",hsum);
         for (bsn=0; bsn<maxSensors*5+5;bsn++) SensorHisto[bsn]=0;   //reset all (5*80) counters
         for (bsn=0; bsn<80;bsn++) SensorHiCount[bsn]=0;       
         HistoLoops=0;
@@ -1460,11 +1537,11 @@ int bsn=0;
           for (bsn=0;bsn<80;bsn++){
             if(Sensor[bsn]!=0) {    //bsn defined
               Sensor[bsn] = Sensor[bsn]+b*pitch + c*2;
-              if(bsn==0) printf("(+#,$) move all alignment +/-%d pixels (direction %d). New S00 at r=%d x=%d\n", \
+              if(bsn==0) Printf("(+#,$) move all alignment +/-%d pixels (direction %d). New S00 at r=%d x=%d\n", \
                             p[1],param2,int(Sensor[bsn]/pitch),int((Sensor[bsn]%pitch)/2));  
             }             
           }
-          printf("Use 'r' to re-reference.  To make permanent, use 'e' to write to EPROM\n");    
+          Printf("Use 'r' to re-reference.  To make permanent, use 'e' to write to EPROM\n");    
         }else  Serial.print("(+#,$) invalid realign cmd\n");
         wait();
         break; 
@@ -1484,7 +1561,7 @@ int updn(int bsn1,int bsn2, int *abs_dr, int *dx) {
     int dr=(int(Sensor[bsn2])/FBPITCH - int(Sensor[bsn1])/FBPITCH);         
     *abs_dr=abs(dr);
     *dx = ((int(Sensor[bsn2])-int(Sensor[bsn1])) - dr*FBPITCH)/2;
-/***/ //   printf("bsn1:%d bsn2:%d dr:%d abs_dr:%d dx:%d \n",bsn1,bsn2,dr,*abs_dr,*dx);
+/***/ //   Printf("bsn1:%d bsn2:%d dr:%d abs_dr:%d dx:%d \n",bsn1,bsn2,dr,*abs_dr,*dx);
     if(dr>=0)   return +1;
     else return -1;
 }    // *****************************
@@ -1493,11 +1570,11 @@ int updn(int bsn1,int bsn2, int *abs_dr, int *dx) {
 void new_camera_set(char C1,char C2){  //Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,AGg
     sensor_t * s = esp_camera_sensor_get();
     if(C1<0x20) {
-      printf("j$# SET OV2640 options for parameter $:\n B: BRIGHTNESS (_,-,0,1,2)\n C: CONTRAST   (_,-,0,1,2)\n");   
-      printf(" S: SATURATION (_,-,0,1,2)   \n W: AWB      (0,1) 1 = enable\n w: awb_gain (0,1) 1 = enable\n");      
-      printf(" E: AEC      (0,1) 1 = enable\n e: aec_level  (_,-,0,1,2)   \n F: aecd     (0,1) 1 = enable\n");       
-      printf(" G: AGC      (0,1) 1 = enable\n g: AG_gain  (0-9)           \n b: bpc      (0,1) 1 = enable\n");
-      printf(" P: wpc      (0,1) 1 = enable\n R: aw_gma   (0,1) 1 = enable\n L: Lenc     (0,1) 1 = enable\n");    
+      Printf("j$# SET OV2640 options for parameter $:\n B: BRIGHTNESS (_,-,0,1,2)\n C: CONTRAST   (_,-,0,1,2)\n");   
+      Printf(" S: SATURATION (_,-,0,1,2)   \n W: AWB      (0,1) 1 = enable\n w: awb_gain (0,1) 1 = enable\n");      
+      Printf(" E: AEC      (0,1) 1 = enable\n e: aec_level  (_,-,0,1,2)   \n F: aecd     (0,1) 1 = enable\n");       
+      Printf(" G: AGC      (0,1) 1 = enable\n g: AG_gain  (0-9)           \n b: bpc      (0,1) 1 = enable\n");
+      Printf(" P: wpc      (0,1) 1 = enable\n R: raw_gma  (0,1) 1 = enable\n L: Lenc     (0,1) 1 = enable\n");    
     }else{     
       int n=0;                          //default 
       if (isDigit(C2)) n=C2-0x30;   //valid: 1 to 9, -(-1), _ (-2)
@@ -1556,7 +1633,7 @@ void new_camera_set(char C1,char C2){  //Bri,Con,Sat,AWB,AWBg,AEC,AECd,AEL,AGC,A
 // FUNCTION TO SET/CHANGE MULTIPLE CAMERA SETTINGS      new_camera_settings(0,1,2,AWB AWBg AEC AECd AEL AGC AGg); 
 void new_camera_settings(int Bri,int Con,int Sat,int AWB,int AWBg,int AEC,int AECd,int AEL,int AGC,int Agg){
   int CB=0;                    //colour bar
-  printf("\nNew_camera_settings() invoked - allow 10sec to stabilise\n");
+  Printf("\nNew_camera_settings() invoked - allow 10sec flashing to stabilise\n");
   sensor_t * s = esp_camera_sensor_get();
   if(abs(Bri>2)) Bri=0;        // reset defaults!
   if(abs(Con>2)) Con=1;
@@ -1610,7 +1687,7 @@ void write_img_sample(byte *imagePtr,int pitch,long offset,int nBytes ){
   byte *z;
    //  int row = int(offset/pitch);
    //  int xposn=int(offset-long(row*pitch));
-   // printf("*(imagePtr+2) %x Sensor[] sample row %d byte %d pitch %d\n",*(imagePtr+2),row,xposn,pitch);
+   // Printf("*(imagePtr+2) %x Sensor[] sample row %d byte %d pitch %d\n",*(imagePtr+2),row,xposn,pitch);
     k=imagePtr;                         //top left pix of S[00]  
     for (int r=0;r<4;r++){              //print out 4 rows for rgb565
       k=&Sensor_ref[00] + offset;       //set left image to the ref[bsn] image
@@ -1619,7 +1696,7 @@ void write_img_sample(byte *imagePtr,int pitch,long offset,int nBytes ){
         if (i==12){                     //after bsNo 0 (4pixels wide) skip to offset (dispX?)
           k=imagePtr;                   //set k to actual image 
           z=k+offset+long(r*pitch);     //set z to 1st pix of S(bsn]
-          Spr(" offsetBytes ");Spr(int(offset));        //print pixels 0-17 THEN offset pixels
+        //Spr(" offsetBytes ");Spr(int(offset));        //print pixels 0-17 THEN offset pixels
           Spr(" bsNo=");Spr(offset/48/8);Spr("/");Spr((offset/48)%8);Spr(" -> ");
         }
         if(i==36) Spr(".");    //end of offset sensor
@@ -1659,7 +1736,7 @@ short int brightnessMax = 0;
   }
   z=long(xMax) * long(fmt) + long(yMax) * long(pitch);
   ltoa(z,zStr,10);
-  printf("yMax %d xMax %d index %lu brightnessMax %d \n",yMax,xMax,z,brightnessMax);
+  Printf("yMax %d xMax %d index %lu brightnessMax %d \n",yMax,xMax,z,brightnessMax);
   return z;                         //returns offset(bytes). z=0 if fmt not 2 or 3.
 }   // *****************************
 
@@ -1671,39 +1748,48 @@ void grab_ref(int bsn, byte *iD, int pitch, long SensorPtr, byte *Ref, int *brig
   //SensorPtr is offset bytes to required start of data (relative to iD[0]
   //Ref destination must be &Sensor_ref[bsNo*S666_pitch] similarly &bright[bsNo]
   //Cratios is array of (4*3) colour ratios (r/g g/b b/r) e.g. &SensorRefRatio[bsn*12]            
-      bright[0]=0; bright4[0]=0;
+      bright[0]=1; bright4[0]=1;   //can not risk dividing by 0
       iD=iD+SensorPtr;  //sens points to first byte of sensor (first colour of top left pixel)
-      for (int i=0;i<pitch;i++) {  
+      for (int i=0;i<pitch;i++) {  // sum of each pixel of 3 rgb bytes (00-0x3F)
 /***/   IFN {Spr("+"); Spr(int(iD[i]));} 
-        Ref[i]=iD[i];          // for RGB565, just need to copy sensor from Sensor666 to Sensor_Ref      
-        bright[0] += iD[i];    // calculate new brightness value (sum of all sensor pixel colours)
-      } 
-      for (int j=15;j<21;j++) bright4[0] += iD[j]+iD[j+12];  //sum 6 consecutive bytes x2 to cover centre 4 pixels.         
+        Ref[i]=iD[i];          // for RGB565, just need to copy sensor from Sensor666 to Sensor_Ref[]      
+        bright[0] += iD[i];    // calculate new brightness value (sum of all sensor pixel colours) 
+      }                        // max = 16*3*0x3F-32 = 16*(3E+3F+3E)
+      //now calculate bright4 (centre 4 pixels)
+      for (int j=15;j<21;j++) bright4[0] += (iD[j]+iD[j+12])*4;  //sum 6 consecutive (pix)bytes x2 in 4 pixels. 
+        // if any pixel satrated, assume all saturated (IR LED)
+      if((iD[15]+iD[16]+iD[17]>0xBB-SAT) || (iD[18]+iD[19]+iD[20]>0xBB-SAT))  //3E+3F+3E=0xBB
+        bright4[0] = (0x3E +0x3F +0x3E)*16;       //scale to match 16 pixels
+      else                                        //check other 2 pixels
+      if((iD[27]+iD[28]+iD[29]>0xBB-SAT) || (iD[30]+iD[31]+iD[32]>0xBB-SAT))
+	      bright4[0] = (0x3E +0x3F +0x3E)*16;  
+	 
 /***/ IFN {Spr(" bright:");Serial.println(bright[0]);Spr(" 4:"); Spr(bright4[0]);}
       Compute_CRatios(iD, S666_row, 0L, Cratios, 2);   //iD has been advanced with iD=iD+SensorPtr; above
       bsnUpdated=bsn;
-/***/ IFN  {Spr("bsn:");Spr(bsn,OCT);Spr(" Computed new Cratios, and brightness of ");Serial.println(bright[0]);}
+/***/ IFN  {Spr("bsn:");Spr(bsn,OCT);Spr(" Computed new Cratios, & brightness of ");Serial.println(bright[0]);}
 /***/ IFN   Spr(".......");
 }   // ***************************** 
   
 // FUNCTION TO COMPARE SENSOR REF WITH LIVE IMAGE DATA
 /*e.g. compare( Sensor666, S666_row, long(bsn*S666_pitch), &SensorRefRatio[bsn*12], bsn, RGB565p);  //compare current S666 frame*/
-int compare(byte *iD, int pitch, long SensorPtr, unsigned int *Ref, int bsNo, int sum){
+int compare(byte *iD, int pitch, long SensorPtr, unsigned int *Ref, int bsno, int sum){
   // iD is pointer to base of imageData (code only handles RGB565 format)
-  // SensorPtr is the OFFSET (e.g. from Sensor[bsNo]) into the iD array
+  // SensorPtr is the OFFSET (e.g. from Sensor[bsno]) into the iD array
   // Ref is pointer to 80 RefRatio Cratio sets for Sensor reference image
-  // bsNo only used for debug printout not used by compare()
+  // bsno only used for debug printout not used by compare()
   // sum  (not used)
   int maxDiff=0;
   int i;
   int j;
   unsigned int Cratio[12]={0,0,0,0,0,0,0,0,0,0,0,0};    //128 x colour ratios (Equal if =128) 
+  const int Diff_noise_correction[16] = {32,30,28,26,24,22,20,18,16,14,12,10,8,6,4,2};   //A640>>6 = 10
   //(quad average Red/av. Blue etc.)
   //compute colour ratios for 3 colours in 4 quadrant from image and put in Cratio[0-11]
       Compute_CRatios(iD,pitch,SensorPtr,&Cratio[0],RGB565p);   //ratios for current image placed in Cratio[12]
-/***/ IF0 if(bsNo<13){
-/***/   Spr("\nRefRatio(");Spr(bsNo,OCT);Spr("):");for (i=0;i<12;i++){Spr(Ref[i]);Spr(" ");} Serial.println(' ');
-/***/   Spr("Cratio(");Spr(bsNo,OCT);Spr("):  ");for(i=0;i<12;i++){Spr(Cratio[i]);Spr(" ");}Serial.println(' ');
+/***/ IF0 if(bsno<13){
+/***/   Spr("\nRefRatio(");Spr(bsno,OCT);Spr("):");for (i=0;i<12;i++){Spr(Ref[i]);Spr(" ");} Serial.println(' ');
+/***/   Spr("Cratio(");Spr(bsno,OCT);Spr("):  ");for(i=0;i<12;i++){Spr(Cratio[i]);Spr(" ");}Serial.println(' ');
 /***/ }
       for (i=0;i<3;i++){   //convert Cratios to Xratios - do for each colour //max XRatio[] is 2016 & min is 32
         for (j=0;j<12;j+=3){  //do for each quadrant (have 3 colour ratios per quadrant)
@@ -1715,8 +1801,13 @@ int compare(byte *iD, int pitch, long SensorPtr, unsigned int *Ref, int bsNo, in
       maxDiff=0;              //find max Xratios in Cratio
       for (i=1;i<12;i++) if(Cratio[i]>maxDiff) maxDiff=Cratio[i];   //range 32 to 18360/4 (4590 max)       
           //cross ratios should range from 32 to 2016
-/***/ IF0 {Spr("Xratios(");Spr(bsNo,OCT);Spr("): ");for (int i=0;i<12;i++){Spr(Cratio[i]);Spr(" ");}
+/***/ IF0 {Spr("Xratios(");Spr(bsno,OCT);Spr("): ");for (int i=0;i<12;i++){Spr(Cratio[i]);Spr(" ");}
 /***/                                        if(maxDiff>threshold)Spr("Hi maxDiff ");Serial.println(maxDiff);}
+
+      if(Sen_Brightness_Ref[bsno]<1000) {  //reduce maxDiff id ref dark to allow for noise.  (e.g. A640>>6 -> -12 
+        maxDiff -= Diff_noise_correction[Sen_Brightness_Ref[bsno]>>6]; 
+        if(maxDiff<32) maxDiff = 32;     
+      } 
       return maxDiff;       //from 32 to 2016 //>>3; could scale back to give 4 to 255 range for max(Cratio/32)
           // end of rgb565 colour ratio comparison       
 }    // *****************************    
@@ -1732,7 +1823,7 @@ int i;
 int j;  
     iD=iD+SensorPtr;        //sets points to first byte of sensor (top left pixel)
     if(bpp==2){
-/***/ IF0  printf("Comp_Cratios: SensorPtr: %lu 1st colour = %x %x %x %x\n",SensorPtr,iD[0],iD[3],iD[12],iD[15]);
+/***/ IF0  Printf("Comp_Cratios: SensorPtr: %lu 1st colour = %x %x %x %x\n",SensorPtr,iD[0],iD[3],iD[12],iD[15]);
       for (int q=0;q<4;q+=2){   //do twice for two pairs of quadrants
         quad[q]=0;quad[q+1]=0;     
         j=q*3;  //do sums for 3 colours x 2 quadrants  //get sum of 9 pixlets in 2 quadrants ->max 63*4=252/quad
@@ -1741,7 +1832,7 @@ int j;
           sm = iD[c]+iD[c+3]+iD[c+12]+iD[c+15];         //sum one colour in 4 pixels spread over 2 rows    
           sum[j+c] = sm;        //colour sum for quadrant
           quad[q] += sm;        //brightness sum for quad
-/***/     IFD  if(SensorPtr<(48*4)) printf("q=%d c=%d pix: %d %d %d %d Sensor sum= %d quad= %d\n",
+/***/     IFD  if(SensorPtr<(48*4)) Printf("q=%d c=%d pix: %d %d %d %d Sensor sum= %d quad= %d\n",
 /***/                               q,c,iD[c],iD[c+3],iD[c+12],iD[c+15],sum[j+c],quad[q]);       //ie bsNo=0->2 
         }
                 //REPEAT FOR 2ND (right) QUADRANT                
@@ -1753,7 +1844,7 @@ int j;
         iD=iD+2*pitch;           //sets points to next quadrnt rows of sensor
       }
       for (i=0;i<12;i++) if (sum[i]<4) sum[i]=4;    //ensure never divide by zero (or less than 4 Cratio fits 
-	                                                // within (signed)integer maxDiff)
+                                                    // within (signed)integer maxDiff)
       for (i=0;i<12;i++){       //for 3 colours and 4 quadrants compute ratios of R/G G/B & B/R -> 12 +ve ratios
         j=i+1;
         if((j%3)==0) j=j-3;        //j=next RGB colour R->G, G->B, B->R   
@@ -1761,7 +1852,7 @@ int j;
         else      Cratio[i]=(sum[j]<<5)/(sum[i]);    // multipy by 32 and integer divide by (refsum) ref for ratio new/old
       }       //Cratio ranges from 32 to 4x63*2^5=252*2^5 / 4 (ie 65280/32 = 2016 max down to 32 if equal)
       quad[4]=quad[0]+quad[1]+quad[2]+quad[3];
-/***/ IFD printf("quad[0->3]: %d %d %d %d %d\n",quad[0],quad[1],quad[2],quad[3],quad[4]); 
+/***/ IFD Printf("quad[0->3]: %d %d %d %d %d\n",quad[0],quad[1],quad[2],quad[3],quad[4]); 
     } 
 }      // ******************************
 
@@ -1860,7 +1951,7 @@ int S666init_SensorRefs(int prefill){
     if (prefill==1)                       //prefill increments down - consider acting when gets to 1.
       if (cFlag!=0) {                     //wait further time.  <cFlag> holds millis() time stamp at start of timeout
         if (cFlag+cDelay < millis()) {    //update ALL references only AFTER <cDelay> milliSeconds of active camera imaging to flush poor images
-/***/   IF6 printf("dbug6 - grab_ref for all enabled sensors\n");
+/***/   IF6 Printf("dbug6 - grab_ref for all enabled sensors\n");
           for (int bsn=0;bsn<80;bsn++)    //grab sensorRef[] images for all active bsNo's
             if(SensorActive[bsn]){        //call grab_ref() for Active sensors only (includes new Cratios & brightness calculations) 
               grab_ref(bsn,Sensor666,S666_pitch,long(bsn*S666_pitch), &Sensor_ref[bsn*S666_pitch], &Sen_Brightness_Ref[bsn], &SensorRefRatio[bsn*12], &Sen_Brightness_Ref4[bsn]);  
@@ -1881,14 +1972,25 @@ bool processDiff(int bsn){
     int Threshold;
         emptyStateCtr[bsn]++;                  //increment sensor "un-tripped" counter (clear later if tripped 
     int brightRef=Sen_Brightness_Ref[bsn];
-/**/    if(DEBUG[5] && bsn>07){                //IF5 h5 flag set & bsn>=010, use 4x pixel (IR) bright, else 16
+	
+/**/  //  if(DEBUG[5] && bsn>07){                //IF5 h5 flag set & bsn>=010, use 4x pixel (IR) bright, else 16
+        if (Sen_Brightness_Ref4[bsn] >= (0x3E +0x3F +0x3E)*16 ){   // Ref had a saturated (IR) pixel
           brightRef=Sen_Brightness_Ref4[bsn];
+               //now calculate bright4 (centre 4 pixels)
           bright=1;    //can't afford to divide by 0.
-          for (int j=15;j<21;j++) bright += Sensor666[bsn*S666_pitch+j] + Sensor666[bsn*S666_pitch+S666_pitch/4+j];  //(pitch=16*3)
-        }else{
+		        //sum 6 consecutive (pix)bytes x2 to cover centre 4 pixels.
+          int o = bsn * S666_pitch +15;	 //array offset	   
+          for (int j=15;j<21;j++) bright += (Sensor666[o+j] + Sensor666[o+S666_pitch/4+j])*4;  //(_pitch=16*3)
+                //check for saturation (by IR LED) 
+          if((Sensor666[o]+Sensor666[o+1]+Sensor666[o+2] > 0xBB-SAT-3)        //rgb 3E+3F+3E=0xBB
+              || (Sensor666[o+3]+Sensor666[o+4]+Sensor666[o+5] > 0xBB-SAT-3))   bright = (0x3E +0x3F +0x3E)*16;
+          if((Sensor666[o+12]+Sensor666[o+13]+Sensor666[o+14] > 0xBB-SAT-3)
+              || (Sensor666[o+15]+Sensor666[o+16]+Sensor666[o+17] > 0xBB-SAT-3))  bright = (0x3E +0x3F +0x3E)*16;
+        }else{  //normal sum of 4x4x3 bytes
           bright=quad[0]+quad[1]+quad[2]+quad[3];  //quad[4] ?
         }
-/***/   IF0 printf("bsn: 0x%x brightness quads: %d %d %d %d sum: %d _Ref %d Ref4 %d\n",bsn,quad[0],quad[1],quad[2],quad[3],bright,Sen_Brightness_Ref[bsn],brightRef); 
+/***/   IF0 Printf("bsn: 0x%x brightness quads: %d %d %d %d sum: %d _Ref %d Ref4 %d\n"
+                   ,bsn,quad[0],quad[1],quad[2],quad[3],bright,Sen_Brightness_Ref[bsn],brightRef); 
        
         if (bright>brightRef) bright= bright*16/brightRef-16;    //rescale bright for addition to maxDiff
         else bright=brightRef*16/bright-16;  //produces a ratio of 0 up. (20% diff. gives bright=3 (adds 9 if brightSF=3)
@@ -1905,7 +2007,10 @@ bool processDiff(int bsn){
            Threshold = pvtThreshold[bsn | 0x07];       //get from sensor b7 
            if (Threshold >= 128) Threshold=threshold;  //use std if b7 also linear
         }
-
+        IFsc if((bsn>=minSensors) && (bsn<maxSensors)) {                     // print bsn and separator 
+          if(bsn<8)Spr("0"); Spr(bsn,OCT);
+          if(Sen_Brightness_Ref4[bsn] >= (0x3E +0x3F +0x3E)*16)  Spr(';'); else Spr(':');  //identify central saturation (IR?) with a ';'
+        }
         if (bpd < Threshold) {    //low diff thinks unoccupied    
           if(SensorHiCount[bsn]>0){          //If had some recent hi's, update histogram
             SenHiCnt=SensorHiCount[bsn];     
@@ -1916,8 +2021,7 @@ bool processDiff(int bsn){
            if(SensorFilter[bsn]>0){ SensorFilter[bsn]-=1;     //only clear block bit after 2nd or 3rd "unoccupied"
             if(bsn<maxSensors){ i2cData[i2cDatai-2] |= 0x80; //flag as uncertain for i2c
               IFsc if(bsn>=minSensors) {
-                if(bsn<8)Spr("0");
-                Spr(bsn,OCT);{if(bpd>99)Spr(":?"); else Spr(":?_");}
+                {if(bpd>99)Spr('?'); else Spr("?_");}
                 Spr(bpd);             
                 if(SensorStat[bsn]){Spr(OCc);Spr(OCc);if(OCc!=char(12))Spr('*');Spr(" ");}//Ch(12) oversize(x1.5)
                 else Spr("_?* ");
@@ -1927,7 +2031,10 @@ bool processDiff(int bsn){
             SensorStat[bsn]=false; SensorFilter[bsn] =1-min2flip;  //reset filter (-ve) to count UP towards occupied if needed  (-1 requires 2 "occupieds")
             SensorBlockStat[b]= SensorBlockStat[b] & ~mask[bsn&7]; //clear SensorBlock bit
             if(bsn<maxSensors){
-              IFsc if(bsn>=minSensors) {if(bsn<8)Spr("0");Spr(bsn,OCT);Spr(":--");Spr(bpd);Spr("--* ");}
+              IFsc if(bsn>=minSensors) {
+                if(bpd>99) Spr('-'); else Spr("--"); 
+                Spr(bpd);Spr("--* ");
+              }
             }
           }
         }else{          //high diff thinks OCCUPIED
@@ -1935,8 +2042,7 @@ bool processDiff(int bsn){
           if(SensorFilter[bsn]<0){ SensorFilter[bsn]+=1;       //only clear block bit after 2nd or 3rd "occupied"
             if(bsn<maxSensors){i2cData[i2cDatai-2] |= 0x80;    //flag as undecided for i2c
               IFsc if(bsn>=minSensors){ 
-                if(bsn<8)Spr("0");
-                Spr(bsn,OCT);{if(bpd>99)Spr(":?"); else Spr(":?_");}
+                if(bpd>99)Spr('?'); else Spr("?_");
                 Spr(bpd);Spr("_?* ");
               }
             }
@@ -1949,16 +2055,14 @@ bool processDiff(int bsn){
               if(bsn<maxSensors){ i2cData[i2cDatai-1] |= 0x80;     //flag as occupied for i2c
                 emptyStateCtr[bsn]=0;                             //clear "untripped" counter
                 IFsc if(bsn>=minSensors){
-                  if(bsn<8)Spr("0");
-                  Spr(bsn,OCT);{if(bpd>99)Spr(":o"); else Spr(":oo");}
+                  if(bpd>99) Spr('o'); else Spr("oo");
                   Spr(bpd);Spr(OCc);Spr(OCc);if(OCc!=char(12))Spr('*'); Spr(' ');
                 }
               }
             }else{      //twin disagrees            
               if(bsn<maxSensors){
                 IFsc if(bsn>=minSensors){
-                  if(bsn<8)Spr("0");
-                  Spr(bsn,OCT);{if(bpd>99)Spr(":o"); else Spr(":oo");}
+                  if(bpd>99)Spr("o"); else Spr("oo");
                   Spr(bpd);Spr("?T* ");
                 }
               }
@@ -2118,13 +2222,13 @@ void i2cReceive(int len){           //function to handle i2c received (interrupt
        
         case 'i': 
          if(isDigit(i2cIncoming[1])) {       //i2cIncoming[1] updates dMaxDiff & dBright only once every 100mSec
-            bsn=i2cIncoming[1]-0x30;         //get bsNo and convert to integer
+           bsn=i2cIncoming[1]-0x30;          //get bsNo and convert to integer
                //check for 2nd #  // No error check if 8 or 9!
-            if(isDigit(i2cIncoming[2])) bsn=bsn*8+((i2cIncoming[2]-0x30)&7);  //8=0 & 9=1 !
+           if(isDigit(i2cIncoming[2])) bsn=bsn*8+((i2cIncoming[2]-0x30)&7);  //8=0 & 9=1 !
          }
-	       bs=char(bsn+0x30);	      // "char" from 0x00 '0' to 0x4F 
+         bs=char(bsn+0x30);	      // "char" from 0x00 '0' to 0x4F 
          i2cPrepare((char)i2cIncoming[0],(char)bs,(char *)dataPkt);   //make an up-to-date dataPkt            
-	       break; 
+         break; 
        }        
 
 /***/  IFT {Spr(len); Serial.println(" bytes onReceive");}     //debug to USB
@@ -2576,21 +2680,21 @@ static bool ConnectWifi(const char *_ssid, const char *wifipass){
 //  FUNCTION TO GET AND DISPLAY CURRENT CAMERA SETTINGS
 void getCAMstatus() {
         sensor_t *s = esp_camera_sensor_get();
-  //      printf("\n\"xclk\":%u,", s->xclk_freq_hz );
-  //      printf("\"framesize\":%u,", s->status.framesize);
-  //      printf("\"quality\":%u,", s->status.quality);
-        printf("(g) BRIGHTNESS:%d, CONTRAST:%d", s->status.brightness, s->status.contrast);
-        printf(" SATURATION:%d, AWB:%u,", s->status.saturation, s->status.awb);
-        printf(" awb_gain:%u, AEC:%u,", s->status.awb_gain, s->status.aec);
-        printf(" AECd:%u, aec_value:%u,", s->status.aec2, s->status.aec_value);
-        printf(" AELevel:%u, AGC:%u,", s->status.ae_level, s->status.agc);     
-        printf(" AGgain:%u, bpc:%u,", s->status.agc_gain, s->status.bpc);
-        printf(" wpc:%u, raw_gma:%u,", s->status.wpc, s->status.raw_gma);
-        printf(" lenc:%u,", s->status.lenc);
-  //      printf("\"hmirror\":%u,", s->status.hmirror);
-  //      printf("\"dcw\":%u,", s->status.dcw);
-  //      printf("\"COLORBAR\":%u", s->status.colorbar); 
-        printf("\n");
+  //      Printf("\n\"xclk\":%u,", s->xclk_freq_hz );
+  //      Printf("\"framesize\":%u,", s->status.framesize);
+  //      Printf("\"quality\":%u,", s->status.quality);
+        Printf("(g) BRIGHTNESS:%d, CONTRAST:%d", s->status.brightness, s->status.contrast);
+        Printf(" SATURATION:%d, AWB:%u,", s->status.saturation, s->status.awb);
+        Printf(" awb_gain:%u, AEC:%u,", s->status.awb_gain, s->status.aec);
+        Printf(" AECd:%u, (aec_value:%u,)", s->status.aec2, s->status.aec_value);
+        Printf(" AELevel:%d, AGC:%u,", s->status.ae_level, s->status.agc);     
+        Printf(" AGgain:%u, bpc:%u,", s->status.agc_gain, s->status.bpc);
+        Printf(" wpc:%u, raw_gma:%u,", s->status.wpc, s->status.raw_gma);
+        Printf(" lenc:%u,", s->status.lenc);
+  //      Printf("\"hmirror\":%u,", s->status.hmirror);
+  //      Printf("\"dcw\":%u,", s->status.dcw);
+  //      Printf("\"COLORBAR\":%u", s->status.colorbar); 
+        Printf("\n");
 }  // *****************************
 
 //FUNCTION TO AVERAGE Numbr OF FRAMES AND UPDATE _ref[bsn] TO AVERAGE VALUES
@@ -2656,10 +2760,37 @@ void av2frames(int bsn){          //byte RingBuff[2*80*16*3];
 //FUNCTION TO SUSPEND LOOPING
 void wait(){
   //stops looping indefinitely until input a newline (\n) from USB or i2c  
-       if(!newi2cCmd) printf("Waiting - 'Enter' to continue\n");
+       if(!newi2cCmd) Serial.print("Waiting - Cmd: ");
+/***/ //   Serial.flush();
        while (!Serial.available() && !newi2cCmd) {
+        delay(1);                                 // gives USB-CDC time to deliver the first byte
          if((micros()-starttime)>CYCLETIME) starttime += CYCLETIME;  //handles 71min overflow
        }
+}  // *****************************
+
+//FUNCTION TO PLACE GRID ON IMAGE
+void drawgrid(int grid){
+  const int GRID1=0x081F;
+  const int GRID100=0xF800;
+  int i,row,gstep,gridC;
+  if(grid < 1) return;  //'g' or 'g0' turns off grid
+  gstep=50;          //draw grid 50x50 if grid==1
+  if(grid > 2) return;
+  if(grid == 2) gstep=20;
+  for(row=gstep;row<240;row+=gstep) {   //draw horizontals
+    if(0==(row % 100)) gridC=GRID100; else gridC=GRID1;
+    for(i=0;i<310;i+=2) {
+      imageFB[row*FBPITCH + i*2] = gridC >> 8;
+      imageFB[row*FBPITCH + i*2+1] = gridC & 0xFF;    
+    }
+  }
+  for(i=gstep*2;i<640;i=i+gstep*2) {    // draw verticals
+    if(0==(i % 200)) gridC=GRID100; else gridC=GRID1;
+    for(row=0;row<230;row+=2) {
+      imageFB[i+FBPITCH*row] = gridC >> 8;
+      imageFB[i+1+FBPITCH*row] = gridC & 0xFF;
+    }
+  }
 }  // *****************************
 
 //FUNCTION TO PLACE A BOX AROUND SENSORS IN A CAMERA IMAGE FOR DISPLAY
@@ -2705,7 +2836,7 @@ void refRefresh(bool suspend){
           //if suspend false, sequentially calculate new ref image for each enabled & vacant sensor
     if (!lastsuspend&&suspend) lastsuspend=true;
     if ( lastsuspend&&suspend) { Spr("SUS "); return; }   //return if SUSpension still in place
-//    IFd9 printf("DEBUG-refRefresh suspend: %d lastsuspend: %d rbsn: %d force_refs: %d \n",suspend,lastsuspend,rbsn,force_refs);  
+//    IFd9 Printf("DEBUG-refRefresh suspend: %d lastsuspend: %d rbsn: %d force_refs: %d \n",suspend,lastsuspend,rbsn,force_refs);  
     if ( lastsuspend && !suspend) {       //on transition to !suspend, dump all averaging and restart               
       lastsuspend=false;                  
       for (i=0;i<80;i++) emptyStateCtr[i]= 0;   //initialise for reference averaging
